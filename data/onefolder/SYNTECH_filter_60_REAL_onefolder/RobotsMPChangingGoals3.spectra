@@ -1,0 +1,87 @@
+import "./imports/DwyerPatterns.spectra"
+
+/**
+ * Changing goals variant - for ControlPanelChangingGoals
+ */
+ 
+ 
+ spec RobotsMPChangingGoals3
+ 
+ define NumRobots := 3;
+ define NumObstacles := 4;
+ define DX := 3;
+ define DY := 3;
+ 
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+ 
+ sys DimX[NumRobots] robotsX;
+ sys DimY[NumRobots] robotsY;
+ 
+ env DimX[NumRobots] goalsX;
+ env DimY[NumRobots] goalsY;
+ 
+ 
+ define
+  startX[NumRobots] := {0, 2, 3};
+  startY[NumRobots] := {0, 2, 3};
+  obstaclesX[NumObstacles] := {0, 1, 3, 1};
+  obstaclesY[NumObstacles] := {2, 2, 2, 0};
+  	
+  predicate moveXOnly(DimX Xpos, DimY Ypos):
+	(Xpos+1 = next(Xpos) |
+	Xpos   = next(Xpos) |
+	Xpos-1 = next(Xpos) ) &   
+	Ypos   = next(Ypos);
+  
+  predicate moveYOnly(DimX Xpos, DimY Ypos):
+	(Ypos+1 = next(Ypos) |
+	Ypos   = next(Ypos) |
+	Ypos-1 = next(Ypos) ) &   
+	Xpos   = next(Xpos);
+	
+	
+//Buggy	
+//  predicate CollisionRobotObstacle(Int(0.. (NumRobots-1)) i, Int(0.. (NumObstacles-1)) j):
+//  	robotsX[i] = obstaclesX[j] & robotsY[i] = obstaclesY[j];
+//  	
+//  predicate validMove(Int(0.. (NumRobots-1)) i):
+//  	moveXOnly(robotsX[i], robotsY[i]) | moveYOnly(robotsX[i], robotsY[i]);
+	
+  predicate swap(Int(0.. (NumRobots-1)) i, Int(0.. (NumRobots-1)) j):
+  	(i != j) & ((next(robotsX[i]) = robotsX[j] & next(robotsY[i]) = robotsY[j]) | (next(robotsX[j]) = robotsX[i] & next(robotsY[j]) = robotsY[i]));
+  	  	
+  predicate CollisionBetweenRobots(Int(0.. (NumRobots-1)) i, Int(0.. (NumRobots-1)) j):
+  	(i != j) & (robotsX[i] = robotsX[j] & robotsY[i] = robotsY[j]);
+  	
+  gar startPositions:
+  	forall i in Int(0..(NumRobots-1)).robotsX[i] = startX[i] & robotsY[i] = startY[i];
+  
+  gar noCollisionsWithObstacles:
+  	G forall i in Int(0..(NumRobots-1)).forall j in Int(0..(NumObstacles-1)).!(robotsX[i] = obstaclesX[j] & robotsY[i] = obstaclesY[j]);
+   
+  gar noCollisionsBetweenRobots:
+  	G forall i in Int(0..(NumRobots-1)).forall j in Int(0..(NumRobots-1)).!CollisionBetweenRobots(i, j);
+  	
+  gar noSwaps:
+  	G forall i in Int(0..(NumRobots-1)).forall j in Int(0..(NumRobots-1)).!swap(i, j);
+  	
+  gar validMoves:
+    G forall i in Int(0..(NumRobots-1)).(moveXOnly(robotsX[i], robotsY[i]) | moveYOnly(robotsX[i], robotsY[i]));
+    
+  asm noGoalOnObstacle:
+  	G forall i in Int(0..(NumRobots-1)).forall j in Int(0..(NumObstacles-1)).!(next(goalsX[i] = obstaclesX[j] & goalsY[i] = obstaclesY[j]));
+  asm ini forall i in Int(0..(NumRobots-1)).forall j in Int(0..(NumObstacles-1)).!(goalsX[i] = obstaclesX[j] & goalsY[i] = obstaclesY[j]);
+  	
+  gar reachGoals:
+  	GF forall i in Int(0..(NumRobots-1)).robotsX[i] = goalsX[i] & robotsY[i] = goalsY[i];
+  	
+  asm noGoalChangeMidWay:
+  	G forall i in Int(0..(NumRobots-1)).(next(goalsX[i]) != goalsX[i] | next(goalsY[i]) != goalsY[i]) -> (forall i in Int(0..(NumRobots-1)).robotsX[i] = goalsX[i] & robotsY[i] = goalsY[i]);
+  	
+  asm noSameGoals:
+  	G forall i in Int(0..(NumRobots-1)).forall j in Int(0..(NumRobots-1)).(i!=j) -> !(next(goalsX[i] = goalsX[j] & goalsY[i] = goalsY[j]));
+  asm ini forall i in Int(0..(NumRobots-1)).forall j in Int(0..(NumRobots-1)).(i!=j) -> !(goalsX[i] = goalsX[j] & goalsY[i] = goalsY[j]); 
+ 
+  	
+  

@@ -1,0 +1,176 @@
+import "./patterns/DwyerPatternsNamed.spectra"
+
+spec JunctionModule
+
+// *********************************************
+// *** define type of all possible vehicles  ***
+// *********************************************
+
+type Vehicle = {NONE, CAR, EMERGENCY};
+
+define RIGHT := 0;
+define STRAIGHT := 1;
+define LEFT := 2;
+define WEST := 0;
+define EAST := 1;
+define NORTH := 0;
+define SOUTH := 1;
+define freeze_states := next(greenNorthVehicles[LEFT]) = greenNorthVehicles[LEFT] and next(greenNorthVehicles[RIGHT]) = greenNorthVehicles[RIGHT] and next(greenNorthVehicles[STRAIGHT]) = greenNorthVehicles[STRAIGHT] and next(greenSouthVehicles[LEFT]) = greenSouthVehicles[LEFT] and next(greenSouthVehicles[RIGHT]) = greenSouthVehicles[RIGHT] and next(greenSouthVehicles[STRAIGHT]) = greenSouthVehicles[STRAIGHT];
+
+// ****************************************************************************************
+// *** cars arrays env variables, index 0 - right , index 1 - straight , index 2 - left ***
+// ****************************************************************************************
+
+env Vehicle[3] vehiclesNorth;
+env Vehicle[3] vehiclesSouth;
+
+// ************************************************************
+// *** pedestrians arrays env variables                     ***
+// *** for south and north: index 0 - west , index 1 - east ***
+// *** for east and west: index 0 - north , index 1 - south ***
+// ************************************************************
+
+env boolean[2] pedestriansNorthPressed;
+env boolean[2] pedestriansSouthPressed;
+env boolean[2] pedestriansEastPressed;
+env boolean[2] pedestriansWestPressed;
+
+// ***********************************************
+// *** special climate heavy fog env variable ***
+// ***********************************************
+
+env boolean foggy;
+
+// *********************************************
+// *** north road constructions env variable ***
+// *********************************************
+
+env boolean roadConstructions;
+
+// *******************************************************************************************************
+// *** cars traffic lights arrays sys variables, index 0 - right , index 1 - straight , index 2 - left ***
+// *******************************************************************************************************
+
+sys boolean[3] greenNorthVehicles;
+sys boolean[3] greenSouthVehicles;
+
+// ************************************************************
+// *** pedestrians traffic lights arrays sys variables      ***
+// *** for south and north: index 0 - west , index 1 - east ***
+// *** for east and west: index 0 - north , index 1 - south ***
+// ************************************************************
+
+sys boolean[2] greenNorthPedestrians;
+sys boolean[2] greenSouthPedestrians;
+sys boolean[2] greenEastPedestrians;
+sys boolean[2] greenWestPedestrians;
+
+// ******************************************
+
+env boolean freezeMode;
+env boolean manualMode;
+
+/*Traffic light for regular cars is red when there is fog*/
+gar alw foggy and !freezeMode implies (vehiclesNorth[RIGHT] != EMERGENCY implies greenNorthVehicles[RIGHT] = false);
+gar alw foggy and !freezeMode implies (vehiclesNorth[LEFT] != EMERGENCY implies greenNorthVehicles[LEFT] = false);
+gar alw foggy and !freezeMode implies (vehiclesNorth[STRAIGHT] != EMERGENCY implies greenNorthVehicles[STRAIGHT] = false);
+gar alw foggy and !freezeMode implies (vehiclesSouth[RIGHT] != EMERGENCY implies greenSouthVehicles[RIGHT] = false);
+gar alw foggy and !freezeMode implies (vehiclesSouth[LEFT] != EMERGENCY implies greenSouthVehicles[LEFT] = false);
+gar alw foggy and !freezeMode implies (vehiclesSouth[STRAIGHT] != EMERGENCY implies greenSouthVehicles[STRAIGHT] = false);
+
+asm alwEv foggy = false and roadConstructions = false and freezeMode = false;
+asm alwEv foggy = false;
+asm alwEv roadConstructions = false;
+asm alwEv freezeMode = false;
+
+/*No vehicles traffic is permitted to the northwest lanes where there is road construction*/
+gar alw roadConstructions = true and freezeMode = false implies greenSouthVehicles[STRAIGHT] = false;
+
+/*Traffic lights remain at the same state during freeze mode*/
+gar alw next(freezeMode = true) implies freeze_states;
+
+/*No accidents between pedestrians and vehicles*/
+gar alw (greenEastPedestrians[SOUTH] = true) implies greenSouthVehicles[RIGHT] = false and greenNorthVehicles[LEFT] = false;
+gar alw (greenWestPedestrians[NORTH] = true) implies greenSouthVehicles[LEFT] = false and greenNorthVehicles[RIGHT] = false;
+gar alw (greenNorthPedestrians[EAST] = true) implies greenSouthVehicles[STRAIGHT] = false;
+gar alw (greenSouthPedestrians[WEST] = true) implies greenNorthVehicles[STRAIGHT] = false;
+gar alw (greenNorthPedestrians[WEST] = true) implies greenNorthVehicles[LEFT] = false and greenNorthVehicles[RIGHT] = false and greenNorthVehicles[STRAIGHT] = false;
+gar alw (greenSouthPedestrians[EAST] = true) implies greenSouthVehicles[LEFT] = false and greenSouthVehicles[RIGHT] = false and greenSouthVehicles[STRAIGHT] = false;
+
+/*No accidents between vehicles*/
+gar alw greenNorthVehicles[LEFT] = true implies greenSouthVehicles[STRAIGHT] = false;
+gar alw greenNorthVehicles[STRAIGHT] = true implies greenSouthVehicles[LEFT] = false;
+
+/*No green light - car stays in lane*/
+asm alw vehiclesSouth[RIGHT] = CAR and greenSouthVehicles[RIGHT] = false implies next (vehiclesSouth[RIGHT]) = CAR;
+asm alw vehiclesSouth[LEFT] = CAR and greenSouthVehicles[LEFT] = false implies next (vehiclesSouth[LEFT]) = CAR;
+asm alw vehiclesSouth[STRAIGHT] = CAR and greenSouthVehicles[STRAIGHT] = false implies next (vehiclesSouth[STRAIGHT]) = CAR;
+asm alw vehiclesNorth[RIGHT] = CAR and greenNorthVehicles[RIGHT] = false implies next (vehiclesNorth[RIGHT]) = CAR;
+asm alw vehiclesNorth[LEFT] = CAR and greenNorthVehicles[LEFT] = false implies next (vehiclesNorth[LEFT]) = CAR;
+asm alw vehiclesNorth[STRAIGHT] = CAR and greenNorthVehicles[STRAIGHT] = false implies next (vehiclesNorth[STRAIGHT]) = CAR;
+asm alw vehiclesSouth[RIGHT] = EMERGENCY and greenSouthVehicles[RIGHT] = false implies next (vehiclesSouth[RIGHT]) = EMERGENCY;
+asm alw vehiclesSouth[LEFT] = EMERGENCY and greenSouthVehicles[LEFT] = false implies next (vehiclesSouth[LEFT]) = EMERGENCY;
+asm alw vehiclesSouth[STRAIGHT] = EMERGENCY and greenSouthVehicles[STRAIGHT] = false implies next (vehiclesSouth[STRAIGHT]) = EMERGENCY;
+asm alw vehiclesNorth[RIGHT] = EMERGENCY and greenNorthVehicles[RIGHT] = false implies next (vehiclesNorth[RIGHT]) = EMERGENCY;
+asm alw vehiclesNorth[LEFT] = EMERGENCY and greenNorthVehicles[LEFT] = false implies next (vehiclesNorth[LEFT]) = EMERGENCY;
+asm alw vehiclesNorth[STRAIGHT] = EMERGENCY and greenNorthVehicles[STRAIGHT] = false implies next (vehiclesNorth[STRAIGHT]) = EMERGENCY;
+
+/*No green light - pedestrians keep waiting*/
+asm alw greenNorthPedestrians[WEST] = false and pedestriansNorthPressed[WEST] = true implies next (pedestriansNorthPressed[WEST]) = true;
+asm alw greenNorthPedestrians[EAST] = false and pedestriansNorthPressed[EAST] = true implies next (pedestriansNorthPressed[EAST]) = true;
+asm alw greenSouthPedestrians[WEST] = false and pedestriansSouthPressed[WEST] = true implies next (pedestriansSouthPressed[WEST]) = true;
+asm alw greenSouthPedestrians[EAST] = false and pedestriansSouthPressed[EAST] = true implies next (pedestriansSouthPressed[EAST]) = true;
+asm alw greenEastPedestrians[NORTH] = false and pedestriansEastPressed[NORTH] = true implies next (pedestriansEastPressed[NORTH]) = true;
+asm alw greenEastPedestrians[SOUTH] = false and pedestriansEastPressed[SOUTH] = true implies next (pedestriansEastPressed[SOUTH]) = true;
+asm alw greenWestPedestrians[NORTH] = false and pedestriansWestPressed[NORTH] = true implies next (pedestriansWestPressed[NORTH]) = true;
+asm alw greenWestPedestrians[SOUTH] = false and pedestriansWestPressed[SOUTH] = true implies next (pedestriansWestPressed[SOUTH]) = true;
+
+// *********************************************
+// *** Traffic Light Logic  ***
+// *********************************************
+
+/*No pedestrians - traffic light is red - **for optimality purposes***/
+gar alw pedestriansNorthPressed[WEST] = false and pedestriansNorthPressed[EAST] = false and !freezeMode implies greenNorthPedestrians[WEST] = false and greenNorthPedestrians[EAST] = false;
+gar alw pedestriansSouthPressed[WEST] = false and pedestriansSouthPressed[EAST] = false and !freezeMode implies greenSouthPedestrians[WEST] = false and greenSouthPedestrians[EAST] = false;
+gar alw pedestriansEastPressed[SOUTH] = false and pedestriansEastPressed[NORTH] = false and !freezeMode implies greenEastPedestrians[SOUTH] = false and greenEastPedestrians[NORTH] = false;
+gar alw pedestriansWestPressed[NORTH] = false and pedestriansWestPressed[SOUTH] = false and !freezeMode implies greenWestPedestrians[NORTH] = false and greenWestPedestrians[SOUTH] = false;
+
+/*Pedestrians can't wait on islands***/
+gar alw greenNorthPedestrians[WEST] iff greenNorthPedestrians[EAST];
+gar alw greenSouthPedestrians[WEST] iff greenSouthPedestrians[EAST];
+gar alw greenEastPedestrians[SOUTH] iff greenEastPedestrians[NORTH];
+gar alw greenWestPedestrians[SOUTH] iff greenWestPedestrians[NORTH];
+
+/*No cars - traffic light is red - **for optimality purposes***/
+gar alw vehiclesSouth[RIGHT] = NONE and !freezeMode implies greenSouthVehicles[RIGHT] = false;
+gar alw vehiclesSouth[LEFT] = NONE and !freezeMode implies greenSouthVehicles[LEFT] = false;
+gar alw vehiclesSouth[STRAIGHT] = NONE and !freezeMode implies greenSouthVehicles[STRAIGHT] = false;
+gar alw vehiclesNorth[RIGHT] = NONE and !freezeMode implies greenNorthVehicles[RIGHT] = false;
+gar alw vehiclesNorth[LEFT] = NONE and !freezeMode implies greenNorthVehicles[LEFT] = false;
+gar alw vehiclesNorth[STRAIGHT] = NONE and !freezeMode implies greenNorthVehicles[STRAIGHT] = false;
+
+/*Traffic lights always eventually turns green when cars want to cross*/
+gar trig [true]*[vehiclesSouth[STRAIGHT] = CAR and greenSouthVehicles[STRAIGHT] = false] |=> [true]*[greenSouthVehicles[STRAIGHT] = true];
+gar trig [true]*[vehiclesSouth[RIGHT] = CAR and greenSouthVehicles[RIGHT] = false] |=> [true]*[greenSouthVehicles[RIGHT] = true];
+gar trig [true]*[vehiclesSouth[LEFT] = CAR and greenSouthVehicles[LEFT] = false] |=> [true]*[greenSouthVehicles[LEFT] = true];
+gar trig [true]*[vehiclesNorth[STRAIGHT] = CAR and greenNorthVehicles[STRAIGHT] = false] |=> [true]*[greenNorthVehicles[STRAIGHT] = true];
+gar trig [true]*[vehiclesNorth[RIGHT] = CAR and greenNorthVehicles[RIGHT] = false] |=> [true]*[greenNorthVehicles[RIGHT] = true];
+gar trig [true]*[vehiclesNorth[LEFT] = CAR and greenNorthVehicles[LEFT] = false] |=> [true]*[greenNorthVehicles[LEFT] = true];
+
+/*Traffic lights always eventually turn green when pedestrians want to cross*/
+gar trig [true]*[pedestriansNorthPressed[WEST] = true and greenNorthPedestrians[WEST] = false] |=> [true]*[greenNorthPedestrians[WEST] = true];
+gar trig [true]*[pedestriansNorthPressed[EAST] = true and greenNorthPedestrians[EAST] = false] |=> [true]*[greenNorthPedestrians[EAST] = true];
+gar trig [true]*[pedestriansSouthPressed[WEST] = true and greenSouthPedestrians[WEST] = false] |=> [true]*[greenSouthPedestrians[WEST] = true];
+gar trig [true]*[pedestriansSouthPressed[EAST] = true and greenSouthPedestrians[EAST] = false] |=> [true]*[greenSouthPedestrians[EAST] = true];
+gar trig [true]*[pedestriansEastPressed[SOUTH] = true and greenEastPedestrians[SOUTH] = false] |=> [true]*[greenEastPedestrians[SOUTH] = true];
+gar trig [true]*[pedestriansEastPressed[NORTH] = true and greenEastPedestrians[NORTH] = false] |=> [true]*[greenEastPedestrians[NORTH] = true];
+gar trig [true]*[pedestriansWestPressed[NORTH] = true and greenWestPedestrians[NORTH] = false] |=> [true]*[greenWestPedestrians[NORTH] = true];
+
+/*Priority for Emergency Cars - Making sure they can pass at the next state or the state after it*/
+gar trig [true]*[vehiclesSouth[RIGHT] = EMERGENCY and greenSouthVehicles[RIGHT] = false and !freezeMode] |=>[freezeMode]*([greenSouthVehicles[RIGHT] = true]|[!freezeMode and greenSouthVehicles[RIGHT] = false][freezeMode]*[greenSouthVehicles[RIGHT] = true]);
+gar trig [true]*[vehiclesSouth[LEFT] = EMERGENCY and greenSouthVehicles[LEFT] = false and !freezeMode] |=>[freezeMode]*([greenSouthVehicles[LEFT] = true]|[!freezeMode and greenSouthVehicles[LEFT] = false][freezeMode]*[greenSouthVehicles[LEFT] = true]);
+//gar trig [true]*[vehiclesSouth[STRAIGHT] = EMERGENCY and greenSouthVehicles[STRAIGHT] = false and !freezeMode and !roadConstructions] |=>[freezeMode|roadConstructions]*([greenSouthVehicles[STRAIGHT] = true]|[!freezeMode and !roadConstructions and greenSouthVehicles[STRAIGHT] = false][freezeMode|roadConstructions]*[greenSouthVehicles[STRAIGHT] = true]);
+gar trig [true]*[vehiclesSouth[STRAIGHT] = EMERGENCY and greenSouthVehicles[STRAIGHT] = false] |=> [true]*[greenSouthVehicles[STRAIGHT] = true];
+gar trig [true]*[vehiclesNorth[RIGHT] = EMERGENCY and greenNorthVehicles[RIGHT] = false and !freezeMode] |=>[freezeMode]*([greenNorthVehicles[RIGHT] = true]|[!freezeMode and greenNorthVehicles[RIGHT] = false][freezeMode]*[greenNorthVehicles[RIGHT] = true]);
+gar trig [true]*[vehiclesNorth[LEFT] = EMERGENCY and greenNorthVehicles[LEFT] = false and !freezeMode] |=>[freezeMode]*([greenNorthVehicles[LEFT] = true]|[!freezeMode and greenNorthVehicles[LEFT] = false][freezeMode]*[!freezeMode and greenNorthVehicles[LEFT] = true]);
+gar trig [true]*[vehiclesNorth[STRAIGHT] = EMERGENCY and greenNorthVehicles[STRAIGHT] = false and !freezeMode] |=> [freezeMode]*([greenNorthVehicles[STRAIGHT] = true]|[!freezeMode and greenNorthVehicles[STRAIGHT] = false][freezeMode]*[greenNorthVehicles[STRAIGHT] = true]);

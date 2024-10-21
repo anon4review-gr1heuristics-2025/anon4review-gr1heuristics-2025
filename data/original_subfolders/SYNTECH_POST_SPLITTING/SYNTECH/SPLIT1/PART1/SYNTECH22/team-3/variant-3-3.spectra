@@ -1,0 +1,107 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Variant_3
+
+define DX := 4;
+define DY := 4;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+type Red_Turn = Int(0..4);
+
+env DimX A_X;
+env DimY A_Y;
+env DimX B_X;
+env DimY B_Y;
+env DimX C_X;
+env DimY C_Y;
+
+sys DimX robotX;
+sys DimY robotY;
+sys {UP, DOWN, LEFT, RIGHT, STAY}move;
+sys Red_Turn RTA;
+sys Red_Turn RTB;
+sys Red_Turn RTC;
+
+/*we decided to limit the maximal number of turns before engine problem in order to make testing easier*/
+/*We maintain the invariant: Robot is yellow <-> count_till_engine = 0*/
+sys Int(0..1000) count_till_engine;
+
+predicate avoid_obstacles (DimX x, DimY y): 
+    (!((x = 0) & (y = 3)) & !((x = 1) & (y = 1)) & !((x = 2) & (y = 1)) & !((x = 3) & (y = 3)) & !((x = 3) & (y = 4)));
+predicate not_Equal(DimX first_x , DimY first_y, DimX second_x , DimY second_y): (!(first_x = second_x & first_y = second_y)) ;
+predicate fix (DimX x, DimY y):
+    next (x) = x & next (y) = y;
+predicate target_not_in(DimX x, DimY y):
+    !(A_X = x & A_Y = y) & !(B_X = x & B_Y = y) & !(C_X = x & C_Y = y);
+
+define at_A := ((robotX = A_X) & (robotY = A_Y));
+define at_B := ((robotX = B_X) & (robotY = B_Y));
+define at_C := ((robotX = C_X) & (robotY = C_Y));
+define at_Origin := ((robotX = 0) & (robotY = 0));
+
+/*Initialization assumptions and guarantees*/
+asm ini at_Origin;
+gar ini count_till_engine > 15;
+gar ini RTB = 0 and RTA = 0 and RTC = 0;
+
+/*Making sure the targets are in different locations*/
+asm alw not_Equal (A_X, A_Y , B_X, B_Y) & not_Equal (A_X, A_Y , C_X, C_Y) & not_Equal (C_X, C_Y , B_X, B_Y) ;
+
+/*Making sure the targets are not in the obstacles and not in the origin*/
+asm alw avoid_obstacles (A_X, A_Y) & !((A_X = 0) & (A_Y = 0)) & avoid_obstacles (B_X, B_Y) & !((B_X = 0) & (B_Y = 0)) & avoid_obstacles (C_X, C_Y) & !((C_X = 0) & (C_Y = 0));
+
+/*Making sure targets don't change their place*/
+asm alw fix (A_X, A_Y) & fix (B_X, B_Y) & fix (C_X, C_Y) ;
+
+/*As targets in these locations might cause the specification to be unrealizable, we chose to avoid them.
+ * For example: if one target is in (0,4) and another is in (1,4) or one target is in (4,4) and another is in (4,2)*/
+asm alw target_not_in (4, 4) & target_not_in (4, 3) & target_not_in (0, 4) ;
+ 
+/*Defining moves - we also used stay to make it easier to avoid edge cases when the robot needs to return to the origin after an engine problem*/
+gar alw move = UP implies (next (robotY) = robotY - 1) & (next (robotX) = robotX);
+gar alw move = DOWN implies (next (robotY) = robotY + 1) & (next (robotX) = robotX) ;
+gar alw move = LEFT implies (next (robotX) = robotX - 1) & (next (robotY) = robotY) ;
+gar alw move = RIGHT implies (next (robotX) = robotX + 1) & (next (robotY) = robotY) ;
+gar alw move = STAY implies (next (robotX) = robotX) & (next (robotY) = robotY) ;
+
+/*Guaranteeing all targets are visited*/
+gar alwEv at_A;
+gar alwEv at_B;
+gar alwEv at_C;
+gar alwEv count_till_engine > 15;
+
+/*Targets are visited when not red and become red after visited*/
+gar alw next (at_A and (count_till_engine>0)) implies ((next (RTA) > 1) and (RTA = 0));
+gar alw next (at_B and (count_till_engine>0)) implies ((next (RTB) > 1) and (RTB = 0));
+gar alw next (at_C and (count_till_engine>0)) implies ((next (RTC) > 1) and (RTC = 0));
+
+/*Counting number of turns until the target becomes green*/
+gar alw RTA > 0 implies next (RTA) = RTA - 1; 
+gar alw RTB > 0 implies next (RTB) = RTB - 1;
+gar alw RTC > 0 implies next (RTC) = RTC - 1;
+
+/* Guaranteeing that as long as target is not reached, their color remains green */
+gar alw (RTA = 0 and next (at_A) = false) implies (next (RTA) = 0);
+gar alw (RTB = 0 and next (at_B) = false) implies (next (RTB) = 0);
+gar alw (RTC = 0 and next (at_C) = false) implies (next (RTC) = 0);
+
+/* Disregarding visits when there are engine problems */
+gar alw next (at_A and (count_till_engine=0)) implies (RTA = 0 implies (next (RTA) = 0));
+gar alw next (at_B and (count_till_engine=0)) implies (RTB = 0 implies (next (RTB) = 0));
+gar alw next (at_C and (count_till_engine=0)) implies (RTC = 0 implies (next (RTC) = 0));
+
+/*counts down till new engine problem */
+gar alw count_till_engine > 0 implies (next (count_till_engine) = count_till_engine - 1);
+
+/*Maintaining counter to new engine problem = 0 until problem is fixed in origin*/
+gar alw (count_till_engine = 0 and !at_Origin) implies (next (count_till_engine) = 0);
+
+/*Guaranteeing that when problem is fixed in origin, counter will be updated, and robot color will be green again */
+gar alw (at_Origin and count_till_engine = 0 ) implies (next (count_till_engine) > 15);
+
+/*Guaranteeing robot doesn't visit obstacles*/
+gar alw avoid_obstacles (robotX, robotY) ;
+
+/*Guaranteeing no illegal moves are made*/
+gar alw (robotX = 0 implies move != LEFT) & (robotX = DX implies move != RIGHT) & (robotY = 0 implies move != UP) & (robotY = DY implies move != DOWN);

@@ -1,0 +1,164 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Cleaner
+
+define DX := 7;
+define DY := 7;
+define inStart := robotX = 0 & robotY = 0;
+define inTarget := robotX = targetX & robotY = targetY;
+define inOrangeZone := (robotY = 0 & robotX > 0 & robotX < 6) | (robotY > 1 & robotY < 4 & robotX > 0 & robotX < 6) | (robotY > 4 & robotY < 7 & robotX > 0 & robotX < 6);
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+ 
+sys DimX robotX;
+sys DimY robotY;
+
+env boolean greenLight;
+env DimX targetX;
+env DimY targetY;
+
+//predicate to avoid all obstacles
+predicate NotOnObsticles(DimX x, DimY y):
+ (!(x > 0 & x < 6 & y = 1)) & (!(x > 0 & x < 6 & y = 4)) & (!(x = 1 & y = 7)) & (!(x = 4 & y = 7));
+
+asm alw NotOnObsticles(targetX, targetY);
+gar alw NotOnObsticles(robotX, robotY);
+
+// target can't be on (0,0)
+asm alw ((targetX != 0) | (targetY != 0));
+
+// assume always eventually there'll be green light
+asm alwEv greenLight;
+
+//guarentees about the robot movement to targets
+
+gar ini inStart;
+gar alwEv inTarget & tank < 4 & !ignoreTarget;
+
+// guarentees about robot possible movements
+
+predicate moveDist(DimX x, DimY y):
+ (x+1 = next(x) & y = next(y)) | (x = next(x) & y+1 = next(y)) | (x-1 = next(x) & y = next(y)) | (x = next(x) & y-1 = next(y));   
+
+predicate stayInPlace(DimX x, DimY y):
+ next(x) = x & next(y) = y;
+
+gar alw moveDist(robotX, robotY) | stayInPlace(robotX, robotY);
+
+sys {BLUE, GREEN, YELLOW, RED, GRAY} robotState;
+gar alw robotState = GREEN <-> inTarget & tank < 4 & !ignoreTarget;
+gar alw robotState = YELLOW <-> next(tank) = 4;
+gar alw robotState = RED <-> (movesFromStart = 7 & !greenLight) | (movesFromStart < 7) | movesInOrange >= 5;
+gar alw robotState = GRAY <-> sleepMode & robotState != YELLOW & robotState != RED & robotState != GREEN;
+
+// *********************************************
+// ***      General Task Requirements        ***
+// *********************************************
+
+//TODO: Implement
+
+// *********************************************
+// ***          Property #1                  ***
+// *********************************************
+
+sys {LEFT, RIGHT, UP, DOWN} pos;
+
+gar ini pos = DOWN;
+
+// these guaranteed make sure the robot behaves as requested in p1
+gar alw !inOrangeZone & stayInPlace(robotX, robotY) -> next(pos) = pos;
+gar alw !inOrangeZone & next(robotX) = robotX - 1 -> next(pos) = LEFT;
+gar alw !inOrangeZone & next(robotX) = robotX + 1 -> next(pos) = RIGHT;
+gar alw !inOrangeZone & next(robotY) = robotY - 1 -> next(pos) = UP;
+gar alw !inOrangeZone & next(robotY) = robotY + 1 -> next(pos) = DOWN;
+
+// these guarantees are actually not necessary, but the make sure the robot
+// behaves in a normal way on white floor (the robot will turn to the direction of movement)
+// it is a designing decision we've made.
+gar alw inOrangeZone & PREV(pos = RIGHT) -> pos = DOWN;
+gar alw inOrangeZone & PREV(pos = DOWN) -> pos = LEFT;
+gar alw inOrangeZone & PREV(pos = LEFT) -> pos = UP;
+gar alw inOrangeZone & PREV(pos = UP) -> pos = RIGHT;
+
+// *********************************************
+// ***          Property #2                  ***
+// *********************************************
+
+counter movesInOrange(0..8){
+	movesInOrange = 0;
+	inc: (inOrangeZone & !inTarget) | movesInOrange >= 5;
+	reset: (movesInOrange = 7 & greenLight) | (!inOrangeZone & greenLight);
+	overflow: keep;
+}
+
+gar alw movesInOrange >= 5 -> stayInPlace(robotX, robotY);
+
+// *********************************************
+// ***          Property #3                  ***
+// *********************************************
+
+// assume cleaning target doesn't move till cleaned
+
+counter movesOnTarget(0..5){
+	movesOnTarget = 0;
+	inc: inTarget & tank < 4 & !ignoreTarget;
+	reset: movesOnTarget = 5 | !inTarget;
+	overflow: keep;
+}
+
+asm alw movesOnTarget != 5 -> stayInPlace(targetX, targetY);
+
+// *********************************************
+// ***          Property #4                  ***
+// *********************************************
+
+env boolean tankIsClean;
+counter tank(0..4){
+	tank = 0;
+	inc: movesOnTarget > 4;
+	reset: inStart & tankIsClean;
+	overflow: keep;
+}
+
+asm alwEv inStart & tank = 4 -> tankIsClean;
+asm ini tankIsClean;
+gar alw inStart & tank = 4 & !tankIsClean -> stayInPlace(robotX, robotY);
+gar alw PREV(tank = 4) & tank = 0 -> next(inStart);
+gar alwEv tank > 0;
+gar alwEv tank = 0;
+
+// *********************************************
+// ***          Property #5                  ***
+// *********************************************
+
+sys boolean ignoreTarget;
+sys boolean sleepMode;
+env boolean nextTarget;
+
+asm alwEv movesFromLastCleanup > 0 -> !nextTarget;
+gar alw next(movesFromLastCleanup) > 0 <-> ignoreTarget;
+gar alw movesFromLastCleanup = 8 <-> sleepMode; 
+gar alw sleepMode -> stayInPlace(robotX, robotY);
+gar alw sleepMode -> !inOrangeZone;
+
+counter movesFromLastCleanup(0..8){
+	movesFromLastCleanup = 0;
+	inc: (nextTarget & movesOnTarget = 5) | (nextTarget & movesFromLastCleanup > 0);
+	reset: !nextTarget;
+	overflow: keep;
+}
+
+// *********************************************
+// ***          Property #6                  ***
+// *********************************************
+
+gar alw movesFromStart < 7 -> inStart;
+gar alw movesFromStart = 7 & !greenLight -> inStart; 
+asm ini !greenLight;
+
+counter movesFromStart(0..8){
+	movesFromStart = 0;
+	inc: (inStart & movesFromStart < 7) | (!inStart);
+	overflow: keep;
+}

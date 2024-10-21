@@ -1,0 +1,158 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Variant2
+
+// TYPES AND DEFINITIONS //
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+define DX := 4;
+define DY := 4;
+
+define
+		obs1 := robotX = 0 and robotY = 3;
+		obs2 := robotX = 1 and robotY = 1;
+		obs3 := robotX = 2 and robotY = 1;
+		obs4 := robotX = 3 and robotY = 3;
+		obs5 := robotX = 3 and robotY = 4;
+define
+		start := robotX = 0 and robotY  = 0;
+		atTargetA := robotX = targetA[0]  and robotY  = targetA[1];
+		atTargetB := robotX = targetB[0]  and robotY  = targetB[1];
+		atTargetC := robotX = targetC[0]  and robotY  = targetC[1];
+		
+// SYSTEM VARIABLES //				
+sys DimX robotX;
+sys DimY robotY;
+sys boolean isStartRed;
+
+
+// ENVIRONMENT VARIABLES //
+env Int(0..DX)[2] targetA;
+env Int(0..DX)[2] targetB;
+env Int(0..DX)[2] targetC;
+
+// PREDICATES //
+predicate right(DimX cord):
+	next(cord) - cord = 1;
+	
+predicate left(DimX cord):
+	next(cord) - cord = -1;
+	
+predicate stayX(DimX cord):
+	next(cord) = cord;
+
+predicate up(DimY cord):
+	next(cord) - cord = 1;
+	
+predicate down(DimY cord):
+	next(cord) - cord = -1;
+
+predicate stayY(DimY cord):
+	next(cord) = cord;
+
+predicate notOnObstacle (DimX x, DimY y):
+	(x = 0 -> y != 3) and
+		(x = 1 -> y != 1) and
+		(x = 2 -> y != 1) and
+		(x = 3 -> y != 3) and
+		(x = 3 -> y != 4);
+		
+predicate notOnStart(DimX x, DimY y):
+	x = 0 -> y != 0;
+
+predicate notEquals (Int(0..DX)[2] x, Int(0..DX)[2] y):
+	x[0] = y[0] -> x[1] != y[1];
+
+// ASSUMPTIONS //
+
+
+//targets stay put after being set
+asm alw next(targetA[0]) = targetA[0] and next(targetA[1]) = targetA[1];
+asm alw next(targetB[0]) = targetB[0] and next(targetB[1]) = targetB[1];
+asm alw next(targetC[0]) = targetC[0] and next(targetC[1]) = targetC[1];
+
+//targets are ordered in rings
+asm alw targetB[0] > targetA[0] and 
+		targetB[1] > targetA[1] and
+		targetC[0] > targetB[0] and
+		targetC[1] > targetB[1];
+
+//targets are not on obstacles
+asm alw notOnObstacle(targetA[0], targetA[1]);
+asm alw notOnObstacle(targetB[0], targetB[1]);
+asm alw notOnObstacle(targetC[0], targetC[1]);
+
+		
+//targets are not on start (0,0)
+asm alw notOnStart(targetA[0], targetA[1]) and 
+		notOnStart(targetB[0], targetB[1]) and
+		notOnStart(targetC[0], targetC[1]);
+		
+//targets are different from each other	
+asm alw targetA[0] = targetB[0] -> targetA[1] != targetB[1] and
+		targetA[0] = targetC[0] -> targetA[1] != targetC[1] and
+		targetC[0] = targetB[0] -> targetC[1] != targetB[1];
+
+//targets are not one point away
+asm alw (targetA[0] = targetB[0] - 1 -> targetA[1] != targetB[1]) and
+		(targetA[0] = targetB[0] - 1 -> targetA[1] != targetB[1] - 1) and
+		(targetA[0] = targetB[0] - 1 -> targetA[1] != targetB[1] + 1) and
+		(targetA[0] = targetB[0] + 1 -> targetA[1] != targetB[1]) and
+		(targetA[0] = targetB[0] + 1 -> targetA[1] != targetB[1] - 1) and
+		(targetA[0] = targetB[0] + 1 -> targetA[1] != targetB[1] +	1) and
+		(targetA[1] = targetB[1] + 1 -> targetA[0] != targetB[0]) and
+		(targetA[1] = targetB[1] + 1 -> targetA[0] != targetB[0] - 1) and
+		(targetA[1] = targetB[1] + 1 -> targetA[0] != targetB[0] + 1) and
+		(targetA[1] = targetB[1] - 1 -> targetA[0] != targetB[0]) and
+		(targetA[1] = targetB[1] - 1 -> targetA[0] != targetB[0] - 1) and
+		(targetA[1] = targetB[1] - 1 -> targetA[0] != targetB[0] + 1) and
+		(targetA[0] = targetC[0] - 1 -> targetA[1] != targetC[1]) and
+		(targetA[0] = targetC[0] - 1 -> targetA[1] != targetC[1] - 1) and
+		(targetA[0] = targetC[0] - 1 -> targetA[1] != targetC[1] + 1) and
+		(targetA[0] = targetC[0] + 1 -> targetA[1] != targetC[1]) and
+		(targetA[0] = targetC[0] + 1 -> targetA[1] != targetC[1] - 1) and
+		(targetA[0] = targetC[0] + 1 -> targetA[1] != targetC[1] + 1) and
+		(targetA[1] = targetC[1] + 1 -> targetA[0] != targetC[0]) and
+		(targetA[1] = targetC[1] + 1 -> targetA[0] != targetC[0] - 1) and
+		(targetA[1] = targetC[1] + 1 -> targetA[0] != targetC[0] + 1) and
+		(targetA[1] = targetC[1] - 1 -> targetA[0] != targetC[0]) and
+		(targetA[1] = targetC[1] - 1 -> targetA[0] != targetC[0] - 1) and
+		(targetA[1] = targetC[1] - 1 -> targetA[0] != targetC[0] + 1) and
+		(targetB[0] = targetC[0] - 1 -> targetB[1] != targetC[1]) and
+		(targetB[0] = targetC[0] - 1 -> targetB[1] != targetC[1] - 1) and
+		(targetB[0] = targetC[0] - 1 -> targetB[1] != targetC[1] + 1) and
+		(targetB[0] = targetC[0] + 1 -> targetB[1] != targetC[1]) and
+		(targetB[0] = targetC[0] + 1 -> targetB[1] != targetC[1] - 1) and
+		(targetB[0] = targetC[0] + 1 -> targetB[1] != targetC[1] + 1) and
+		(targetB[1] = targetC[1] + 1 -> targetB[0] != targetC[0]) and
+		(targetB[1] = targetC[1] + 1 -> targetB[0] != targetC[0] - 1) and
+		(targetB[1] = targetC[1] + 1 -> targetB[0] != targetC[0] + 1) and		
+		(targetB[1] = targetC[1] - 1 -> targetB[0] != targetC[0]) and
+		(targetB[1] = targetC[1] - 1 -> targetB[0] != targetC[0] - 1) and
+		(targetB[1] = targetC[1] - 1 -> targetB[0] != targetC[0] + 1);
+		
+
+//the robot moves one step at a time - we allow diagonal moves as well as up/down/left/right
+gar alw (right(robotX) | left(robotX) | stayX(robotX)) and
+		(up(robotY) | down(robotY) | stayY(robotY));
+
+//the robot visits targets in strict order A->B->C
+gar trig [start] |=> [!atTargetB and !atTargetC]*[atTargetA];
+gar trig [true]*[atTargetA] |=> [!atTargetC]*[atTargetB][!atTargetA]*[atTargetC][!atTargetB]*[atTargetA]; 
+
+//the robot avoids obstacles
+gar alw !obs1 and !obs2 and !obs3 and !obs4 and !obs5;
+
+//1st target turns start location green, last target turns start location red
+gar P_is_false_after_Q_until_R(isStartRed, atTargetA, atTargetC);
+gar P_is_true_After_Q_until_R(isStartRed, atTargetC, atTargetA);
+gar P_is_true_After_Q_until_R(isStartRed, start, atTargetA);
+
+
+//robot starts at top left and start is red.
+gar ini start;
+gar ini isStartRed = true;
+
+

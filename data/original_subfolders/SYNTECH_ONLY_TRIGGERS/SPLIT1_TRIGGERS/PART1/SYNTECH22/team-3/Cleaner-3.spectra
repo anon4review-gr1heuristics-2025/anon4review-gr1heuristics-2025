@@ -1,0 +1,158 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Cleaner_3
+define DX := 7;
+define DY := 7;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+env DimX Cleaning_X;
+env DimY Cleaning_Y;
+env boolean greenLight;
+
+env boolean env_is_cleaning;
+sys DimX robotX;
+sys DimY robotY;
+sys {UP, DOWN, LEFT, RIGHT,STAY}move;
+sys {UP, LEFT, RIGHT, IGNORE}orange_zone_orientation;
+sys boolean shouldClean;
+sys {ROTATION_0, ROTATION_90 , ROTATION_180, ROTATION_270}robot_rotation;
+sys boolean robot_is_cleaning;
+sys boolean sleep_mode;
+sys boolean waiting_for_green_light;
+sys boolean waiting_for_green_light_2;
+predicate avoid_obstacles (DimX x, DimY y): 
+
+    (!((x = 1) & (y = 1)) & !((x = 2) & (y = 1)) & !((x = 3) & (y = 1)) & !((x = 4) & (y = 1)) & !((x = 5) & (y = 1)) & !((x = 1) & (y = 4)) & !((x = 2) & (y = 4)) & !((x = 3) & (y = 4)) & !((x = 4) & (y = 4)) & !((x = 5) & (y = 4)) & !((x = 1) & (y = 7)) & !((x = 4) & (y = 7)));
+predicate not_Equal(DimX first_x , DimY first_y, DimX second_x , DimY second_y): (!(first_x = second_x & first_y = second_y)) ;
+predicate fix (DimX x, DimY y):
+    next (x) = x & next (y) = y;
+
+define at_Origin := ((robotX = 0) & (robotY = 0));
+define at_Orange_Zone := (((robotX = 1) & (robotY = 0)) or ((robotX = 2) & (robotY = 0)) or ((robotX = 3) & (robotY = 0)) or ((robotX = 4) & (robotY = 0)) or ((robotX = 5) & (robotY = 0)) or ((robotX = 1) & (robotY = 2)) or ((robotX = 2) & (robotY = 2)) or ((robotX = 3) & (robotY = 2)) or ((robotX = 4) & (robotY = 2)) or ((robotX = 5) & (robotY = 2)) or ((robotX = 1) & (robotY = 3)) or ((robotX = 2) & (robotY = 3)) or ((robotX = 3) & (robotY = 3)) or ((robotX = 4) & (robotY = 3)) or ((robotX = 5) & (robotY = 3)) or ((robotX = 1) & (robotY = 5)) or ((robotX = 2) & (robotY = 5)) or ((robotX = 3) & (robotY = 5)) or ((robotX = 4) & (robotY = 5)) or ((robotX = 5) & (robotY = 5)) or ((robotX = 1) & (robotY = 6)) or ((robotX = 2) & (robotY = 6)) or ((robotX = 3) & (robotY = 6)) or ((robotX = 4) & (robotY = 6)) or ((robotX = 5) & (robotY = 6)));
+define robot_at_cleaning_cell := ((robotX = Cleaning_X) & (robotY = Cleaning_Y));
+define done_cleaning := (stay_at_cleaning_cell = 6 and move != STAY);
+define left_to_right_orange_zone := ((PREV((robotX = 0) & (robotY = 0)) and (robotX = 1) & (robotY = 0)) or (PREV((robotX = 0) & (robotY = 2)) and (robotX = 1) & (robotY = 2)) or (PREV((robotX = 0) & (robotY = 3)) and (robotX = 1) & (robotY = 3)) or (PREV((robotX = 0) & (robotY = 5)) and (robotX = 1) & (robotY = 5)) or (PREV((robotX = 0) & (robotY = 6)) and (robotX = 1) & (robotY = 6)));
+define right_to_left_orange_zone := ((PREV((robotX = 6) & (robotY = 0)) and (robotX = 5) & (robotY = 0)) or (PREV((robotX = 6) & (robotY = 2)) and (robotX = 5) & (robotY = 2)) or (PREV((robotX = 6) & (robotY = 3)) and (robotX = 5) & (robotY = 3)) or (PREV((robotX = 6) & (robotY = 5)) and (robotX = 5) & (robotY = 5)) or (PREV((robotX = 6) & (robotY = 6)) and (robotX = 5) & (robotY = 6)));
+define down_to_up_orange_zone := ((PREV((robotX = 2) & (robotY = 7)) and (robotX = 2) & (robotY = 6)) or (PREV((robotX = 3) & (robotY = 7)) and (robotX = 3) & (robotY = 6)));
+
+counter orange_zone_counter(0..6) {
+orange_zone_counter = 0;
+inc: ( (next(at_Orange_Zone) ) and !((orange_zone_counter = 6) and (next (greenLight) = true)));
+reset: ( (next(!at_Orange_Zone) ) or ((orange_zone_counter = 6) and (next (greenLight) = true)));
+overflow: keep;
+}
+
+counter stay_at_cleaning_cell(0..6) {
+stay_at_cleaning_cell = 0;
+inc: next ((robot_at_cleaning_cell and shouldClean = true and things_in_tank < 5 and turns_without_dirt < 8)) ;
+reset: !next ((robot_at_cleaning_cell and shouldClean = true)) ;
+overflow: keep;
+}
+
+counter things_in_tank(0..5) {
+things_in_tank = 0;
+inc: (done_cleaning) ;
+reset:  ((at_Origin and env_is_cleaning = true)) ;
+overflow: keep;
+}
+
+counter turns_without_dirt(0..8) {
+turns_without_dirt = 0;
+inc:  next (shouldClean) = false;
+reset: next (shouldClean) = true;
+overflow: keep;
+}
+
+/*Exercise requirements*/
+asm alwEv greenLight = true;
+gar alwEv shouldClean = false;
+gar alwEv shouldClean = true;
+gar alw ((shouldClean = true) and (!robot_at_cleaning_cell) ) implies next (shouldClean) = true;
+gar alw shouldClean = true and robot_at_cleaning_cell and things_in_tank = 5 implies next (shouldClean) = true;
+
+/*Making sure cleaning cell change their location after being cleaned
+ * This is required since otherwise the environment de-facto chooses to fix the cleaning cell */
+asm alw (robot_at_cleaning_cell and done_cleaning) implies ((next (Cleaning_X) != Cleaning_X) and (next (Cleaning_Y) != Cleaning_Y));
+asm alw !(robot_at_cleaning_cell and done_cleaning) implies fix (Cleaning_X, Cleaning_Y) ;
+/*Making sure the cleaning cell is not in the obstacles and not in the origin*/
+asm alw avoid_obstacles (Cleaning_X, Cleaning_Y) & !((Cleaning_X = 0) & (Cleaning_X = 0)); 
+
+/*Defining moves*/
+gar alw move = UP implies (next (robotY) = robotY - 1) & (next (robotX) = robotX);
+gar alw move = DOWN implies (next (robotY) = robotY + 1) & (next (robotX) = robotX);
+gar alw move = LEFT implies (next (robotX) = robotX - 1) & (next (robotY) = robotY);
+gar alw move = RIGHT implies (next (robotX) = robotX + 1) & (next (robotY) = robotY);
+gar alw move = STAY implies (next (robotX) = robotX) & (next (robotY) = robotY) ;
+
+/*Guaranteeing robot starts at the origin*/
+gar ini at_Origin;
+/*Guaranteeing robot doesn't visit obstacles*/
+gar alw avoid_obstacles (robotX, robotY) ;
+/*Guaranteeing no illegal moves are made*/
+gar alw (robotX = 0 implies move != LEFT) & (robotX = DX implies move != RIGHT) & (robotY = 0 implies move != UP) & (robotY = DY implies move != DOWN);
+/*Guaranteeing the robot goes cleaning the cell*/
+gar alwEv (robot_at_cleaning_cell and shouldClean = true);
+
+/*Property 1*/
+/*Maintaining initial orientation for the simulation*/
+gar alw left_to_right_orange_zone implies orange_zone_orientation = RIGHT;
+gar alw right_to_left_orange_zone implies orange_zone_orientation = LEFT;
+gar alw down_to_up_orange_zone implies orange_zone_orientation = UP;
+gar alw at_Orange_Zone and next(at_Orange_Zone) implies next (orange_zone_orientation) = orange_zone_orientation;
+gar alw !at_Orange_Zone implies orange_zone_orientation = IGNORE;
+
+/*Updating robot_rotation variable for the simulation*/
+gar alw !at_Orange_Zone implies robot_rotation = ROTATION_0;
+gar alw (next (at_Orange_Zone) and !at_Orange_Zone) implies next (robot_rotation) = ROTATION_0;
+gar alw (next (at_Orange_Zone) and at_Orange_Zone and robot_rotation = ROTATION_0) implies next (robot_rotation) = ROTATION_90;
+gar alw (next (at_Orange_Zone) and at_Orange_Zone and robot_rotation = ROTATION_90) implies next (robot_rotation) = ROTATION_180;
+gar alw (next (at_Orange_Zone) and at_Orange_Zone and robot_rotation = ROTATION_180) implies next (robot_rotation) = ROTATION_270;
+gar alw (next (at_Orange_Zone) and at_Orange_Zone and robot_rotation = ROTATION_270) implies next (robot_rotation) = ROTATION_0;
+
+/*Property 2*/
+gar alw orange_zone_counter >= 5 and at_Orange_Zone implies (move = STAY);
+gar alw waiting_for_green_light = true iff PREV (orange_zone_counter = 6) and orange_zone_counter = 6 and greenLight = false;
+
+/*Property 3*/
+/*Guaranteeing robot stay in cleaning cell for *at least* 5 consecutive turns for cleaning*/
+gar alw (robot_at_cleaning_cell and shouldClean = true and stay_at_cleaning_cell >= 0 and stay_at_cleaning_cell <= 5 and things_in_tank < 5 and turns_without_dirt < 8) implies move = STAY and next (shouldClean) = true;
+gar alwEv robot_at_cleaning_cell and done_cleaning;
+gar alw (robot_at_cleaning_cell and shouldClean = true and stay_at_cleaning_cell = 6) implies (move = STAY implies next (shouldClean) = true);
+/*Maintaining auxiliary variable 'robot_is_cleaning' for UI*/
+gar alw robot_is_cleaning iff robot_at_cleaning_cell and shouldClean = true and things_in_tank < 5 and turns_without_dirt < 8;
+
+/*Property 4*/
+/*Making sure the environment cleans the tank*/
+asm ini env_is_cleaning = false; 
+asm alwEv env_is_cleaning = true;
+/*Specifying what should happen during cleaning */
+gar alw at_Origin and ! (env_is_cleaning) and things_in_tank = 5 implies next (at_Origin) = true; 
+gar alw at_Origin and (env_is_cleaning) and things_in_tank = 5 implies move = STAY; 
+/*Implement the 2 turns waiting required after cleaning */
+gar trig [true]*[at_Origin and env_is_cleaning and things_in_tank = 5] |=> [move=STAY]{2}[(move=STAY)]*[move!=STAY]; 
+
+/*Property 5 */
+/*Forcing the robot to go to the white zone after 8 consecutive states*/
+gar alwEv ! (at_Orange_Zone) ; 
+/*Initializing and defining sleep mode variable - used for the UI */
+gar ini sleep_mode = false;
+gar alw (turns_without_dirt = 8 and ! (at_Orange_Zone) ) implies (move) = STAY and sleep_mode = true;
+/*Use auxiliary variable 'a' to implement the 2 turns wait after the cleaning target appears */
+sys boolean a;
+gar ini a = false;
+gar alw ! (at_Orange_Zone) and (PREV(turns_without_dirt = 8) and (turns_without_dirt = 0)) implies move = STAY and next (a) = true; 
+gar alw a = true implies move = STAY and next (move) = STAY and sleep_mode = true and next (sleep_mode) = true;
+/* Fixing the sleep mode variable */
+gar alw !((turns_without_dirt = 8 and ! (at_Orange_Zone) ) or a = true) implies sleep_mode = false; 
+/* Fixing the auxiliary variable */
+gar alw !(! (at_Orange_Zone) and (PREV(turns_without_dirt = 8) and (turns_without_dirt = 0))) implies next (a) = false;
+
+/*Property 6*/
+/*Trigger making sure robot doesn't move for the first 8 states*/
+gar ini move = STAY;
+gar trig [at_Origin] |=> [move=STAY and waiting_for_green_light_2 = true]{7}[(move=STAY and waiting_for_green_light_2 = true)]*[move!=STAY and greenLight = true and waiting_for_green_light_2 = false];
+/*Maintaining auxiliary variable for UI*/
+gar ini waiting_for_green_light_2 = true; 
+gar alw waiting_for_green_light_2 = false implies next (waiting_for_green_light_2) = false;

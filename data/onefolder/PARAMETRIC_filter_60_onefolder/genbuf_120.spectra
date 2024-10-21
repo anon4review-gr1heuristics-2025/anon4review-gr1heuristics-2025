@@ -1,0 +1,94 @@
+module genbuf_parametric
+
+define N := 120;
+define IND := N - 1;
+
+env boolean[N] StoB_REQ;
+env boolean[2] RtoB_ACK;
+env boolean FULL;
+env boolean EMPTY;
+
+sys boolean[N] BtoS_ACK;
+sys boolean[2] BtoR_REQ;
+sys Int(0..3) stateG7;
+sys boolean ENQ;
+sys boolean DEQ;
+sys boolean stateG12;
+sys boolean[N] SLC;
+
+asm forall i in Int(0..IND) . !StoB_REQ[i];
+
+asm forall i in Int(0..1) . !RtoB_ACK[i];
+
+asm !FULL;
+asm !EMPTY;
+
+asm G forall i in Int(0..IND) . (StoB_REQ[i] & !BtoS_ACK[i]) -> next(StoB_REQ[i]);
+asm G forall i in Int(0..IND) . BtoS_ACK[i] -> next(!StoB_REQ[i]);
+
+asm G forall i in Int(0..1) . !BtoR_REQ[i] -> !next(RtoB_ACK[i]);
+asm G forall i in Int(0..1) . (BtoR_REQ[i] & RtoB_ACK[i]) -> next(RtoB_ACK[i]); 
+
+asm G (ENQ & !DEQ) -> next(!EMPTY);
+asm G (DEQ & !ENQ) -> next(!FULL);
+
+asm G (ENQ = DEQ) -> ((FULL = next(FULL)) & (EMPTY = next(EMPTY)));
+
+asm asmAck{Int(0..1) i} : GF BtoR_REQ[i] = RtoB_ACK[i];
+
+gar forall i in Int(0..IND) . !BtoS_ACK[i];
+gar forall i in Int(0..1) . !BtoR_REQ[i];
+
+gar stateG7 = 1;
+gar !ENQ;
+gar !DEQ;
+gar !stateG12;
+
+gar forall i in Int(0..IND) . !SLC[i];
+
+gar G forall i in Int(0..IND) . forall j in Int(0..IND) . (i != j) -> !(SLC[i] & SLC[j]);
+
+gar G forall i in Int(0..IND) . (!StoB_REQ[i] & next(StoB_REQ[i])) -> next(!BtoS_ACK[i]);
+gar G forall i in Int(0..IND) . (!BtoS_ACK[i] & !StoB_REQ[i]) -> next(!BtoS_ACK[i]);
+gar G forall i in Int(0..IND) . (BtoS_ACK[i] & StoB_REQ[i]) -> next(BtoS_ACK[i]);
+
+gar G forall i in Int(0..IND) . forall j in Int(0..IND) . (i != j) -> !(BtoS_ACK[i] & BtoS_ACK[j]);
+
+gar G forall i in Int(0..1) . (BtoR_REQ[i] & !RtoB_ACK[i]) -> next(BtoR_REQ[i]);
+gar G forall i in Int(0..1) . RtoB_ACK[i] -> next(!BtoR_REQ[i]);
+
+gar G !(BtoR_REQ[0] & BtoR_REQ[1]);
+
+gar G ((stateG7 = 1 | stateG7 = 3) & BtoR_REQ[0] & !BtoR_REQ[1]) -> next(stateG7 = 0);
+gar G ((stateG7 = 0 | stateG7 = 2) & !BtoR_REQ[0] & BtoR_REQ[1]) -> next(stateG7 = 1);
+gar G ((stateG7 = 0 | stateG7 = 2) & !BtoR_REQ[0] & !BtoR_REQ[1]) -> next(stateG7 = 2);
+gar G ((stateG7 = 1 | stateG7 = 3) & !BtoR_REQ[0] & !BtoR_REQ[1]) -> next(stateG7 = 3);
+gar G ((stateG7 = 0) & BtoR_REQ[0] & !BtoR_REQ[1]) -> next(stateG7 = 0);
+gar G ((stateG7 = 1) & !BtoR_REQ[0] & BtoR_REQ[1]) -> next(stateG7 = 1);
+gar G ((stateG7 = 2) & BtoR_REQ[0]) -> FALSE;
+gar G ((stateG7 = 3) & BtoR_REQ[1]) -> FALSE;
+
+gar G forall i in Int(0..IND) . (!BtoS_ACK[i] & next(BtoS_ACK[i])) -> next(ENQ);
+gar G forall i in Int(0..IND) . (!BtoS_ACK[i] & next(BtoS_ACK[i])) -> next(SLC[i]);
+
+gar G (forall i in Int(0..IND) . (BtoS_ACK[i] | next(!BtoS_ACK[i]))) -> next(!ENQ);
+
+gar G forall i in Int(0..1) . (RtoB_ACK[i] & next(!RtoB_ACK[i])) -> next(DEQ);
+
+gar G (forall i in Int(0..1) . (!RtoB_ACK[i] | next(RtoB_ACK[i]))) -> next(!DEQ);
+
+gar garAck{Int(0..IND) i} : GF StoB_REQ[i] = BtoS_ACK[i];
+
+gar GF !stateG12;
+
+gar G (FULL & !DEQ) -> !ENQ;
+
+gar G EMPTY -> !DEQ;
+
+gar G (!stateG12 & EMPTY) -> next(!stateG12);
+gar G (!stateG12 & DEQ) -> next(!stateG12);
+gar G (!stateG12 & !EMPTY & !DEQ) -> next(stateG12);
+gar G (stateG12 & !DEQ) -> next(stateG12);
+gar G (stateG12 & DEQ) -> next(!stateG12);
+
+

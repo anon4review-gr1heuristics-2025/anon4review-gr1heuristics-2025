@@ -1,0 +1,157 @@
+import "./DwyerPatternsNamed.spectra"
+spec Robot
+
+//~~~~~~~~~~~ TYPES ~~~~~~~~~~~~~~
+
+define DX := 4;
+define DY := 4;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+
+//~~~~~~~~ CORE OBJECTS ~~~~~~~~~~
+
+sys DimX robotX;	// X position of the robot from 0 to 4
+sys DimY robotY;	// Y position of the robot from 0 to 4
+
+env DimX targetA_X;
+env DimY targetA_Y;
+env DimX targetB_X;
+env DimY targetB_Y;
+env DimX targetC_X;
+env DimY targetC_Y;
+
+
+// noted locations: start point and target points
+define
+	atStart := (robotX = 0) & (robotY = 0);
+	atTargetA := (robotX = targetA_X) & (robotY = targetA_Y);
+	atTargetB := (robotX = targetB_X) & (robotY = targetB_Y);
+	atTargetC := (robotX = targetC_X) & (robotY = targetC_Y);
+	
+	
+//~~~~~~~~~ PREDICATES ~~~~~~~~~~
+
+// moving x coordinate predicate
+predicate moveDistX(DimX Xpos):
+	(next(Xpos) = Xpos) | (next(Xpos) = Xpos +1) | (next(Xpos) = Xpos -1); 
+
+// moving y coordinate predicate
+predicate moveDistY(DimY Ypos):
+	(next(Ypos) = Ypos) | (next(Ypos) = Ypos +1) | (next(Ypos) = Ypos -1); 
+
+// facilitate robot moves predicate
+predicate robotMoves(DimX Xpos, DimY Ypos):
+ 	moveDistX(Xpos) & moveDistY(Ypos);
+
+// check 2 core objects share the same location
+predicate intersecting(DimX Xpos1, DimY Ypos1, DimX Xpos2, DimY Ypos2):
+	((Xpos1 = Xpos2) & (Ypos1 = Ypos2));
+
+// avoid hard-coded obstacles
+predicate avoidsObstacles(DimX Xpos, DimY Ypos):
+	!intersecting(Xpos, Ypos, 0, 3) &
+	!intersecting(Xpos, Ypos, 1, 1) &
+	!intersecting(Xpos, Ypos, 2, 1) &
+	!intersecting(Xpos, Ypos, 3, 3) &
+	!intersecting(Xpos, Ypos, 3, 4)
+	;
+
+// stay in board limits -> between 0 and 8 for x and y
+predicate staysInBoardLimits(DimX Xpos, DimY Ypos):
+	(Xpos >= 0) & (Xpos <= DX) & (Ypos >= 0) & (Ypos <= DY);
+
+// fix location of core object
+predicate isFixed(DimX Xpos, DimY Ypos):
+	(next(Xpos) = Xpos) & (next(Ypos) = Ypos);
+	
+// given a cell in the board, check if all targets do not occupy it 
+predicate targetsAvoidCell(DimX Xpos, DimY Ypos):
+	!intersecting(targetA_X, targetA_Y, Xpos, Ypos) &
+	!intersecting(targetB_X, targetB_Y, Xpos, Ypos) &
+	!intersecting(targetC_X, targetC_Y, Xpos, Ypos);
+
+
+//~~~~~~~~~ MONITORS ~~~~~~~~~~
+
+// every time robot visits a target (or its on its way to start), until it reaches start, it needs to visit start.
+monitor boolean needToVisitStart {
+	ini !needToVisitStart;
+	
+	alw ((atTargetA | atTargetB | atTargetC | needToVisitStart) & !atStart) <-> (next(needToVisitStart));
+}
+
+// Explanation for all 3 targets' monitors: 
+// we integrate liveness into targets' monitors: 
+// if robot is at start, he then needs to visit all of the targets. 
+// robot stops needing to visit a target only after visiting it.
+monitor boolean needToVisitTargetA {
+	ini needToVisitTargetA;
+	
+	alw ((atStart | needToVisitTargetA) & !atTargetA) <-> (next(needToVisitTargetA));
+}
+
+monitor boolean needToVisitTargetB {
+	ini needToVisitTargetB;
+	
+	alw ((atStart | needToVisitTargetB) & !atTargetB) <-> (next(needToVisitTargetB));
+}
+
+monitor boolean needToVisitTargetC {
+	ini needToVisitTargetC;
+	
+	alw ((atStart | needToVisitTargetC) & !atTargetC) <-> (next(needToVisitTargetC));
+}
+
+
+//~~~~~~~~~ ASSUMPTIONS ~~~~~~~~~~
+
+// spectra assumes targets are not moving
+asm targetsAreFixed:
+	alw isFixed(targetA_X, targetA_Y) &
+		isFixed(targetB_X, targetB_Y) &
+		isFixed(targetC_X, targetC_Y);
+
+// spectra assumes targets do not share location with obstacles
+asm targetsDoNotIntersectObstacles:
+	alw avoidsObstacles(targetA_X, targetA_Y) &
+		avoidsObstacles(targetB_X, targetB_Y) &
+		avoidsObstacles(targetC_X, targetC_Y);
+
+// spectra assumes targets do not share location with each other
+asm targetsDoNotIntersectEachOther:
+	alw !intersecting(targetA_X, targetA_Y, targetB_X, targetB_Y) &
+		!intersecting(targetA_X, targetA_Y, targetC_X, targetC_Y) &
+		!intersecting(targetB_X, targetB_Y, targetC_X, targetC_Y);
+
+// spectra assumes targets are not positioned on starting location 
+asm targetsDoNotIntersectStart:
+	alw targetsAvoidCell(0, 0);
+
+
+//~~~~~~~~~ GUARANTEES ~~~~~~~~~~~
+
+// spectra guarantees robot initial position is top-left cell
+gar ini atStart;
+
+// spectra guarantees robot always moves, does not step on obstacles, & stays on board
+gar	robotBehaves: 
+	alw robotMoves(robotX, robotY) & 
+		avoidsObstacles(robotX, robotY) &
+		staysInBoardLimits(robotX, robotY);
+
+// spectra wants the robot to always eventually not need to visit anywhere.
+// every time robot visits start, it needs to visit the targets. 
+// every time robot visits a target, it needs to visit start.
+// therefore, the robot will always make way towards the start after visiting a target,
+// and visit the start before going to any target..
+gar alwEv !needToVisitStart;
+gar alwEv !needToVisitTargetA;
+gar alwEv !needToVisitTargetB;
+gar alwEv !needToVisitTargetC;
+
+// spectra guarantees the robot does not stall too much when he needs to go back to start
+gar trig [true]*[needToVisitStart] |=> [true]{0, 9}[atStart];
+
+

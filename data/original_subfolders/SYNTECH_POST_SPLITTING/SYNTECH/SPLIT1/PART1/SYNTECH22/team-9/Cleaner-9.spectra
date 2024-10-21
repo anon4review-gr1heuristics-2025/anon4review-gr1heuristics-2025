@@ -1,0 +1,278 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Cleaner
+
+
+define DX := 7;
+define DY := 7;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+//type Color = {BLUE, RED, GREEN, YELLOW, GRAY};
+ 
+sys DimX robotX;
+sys DimY robotY;
+sys Int(0..5) tank;
+sys Int(0..8) iniCounter;
+sys Int(0..7) orangeCounter;
+sys Int(0..5) cleaningCounter;
+sys Int(0..3) rotateRobot;
+sys Int(0..2) waitAfterEmpty;
+sys {BLUE, RED, GREEN, YELLOW, GRAY} robotColor;
+sys boolean isOrange;
+//sys Int(0..8) noCleaningCounter;
+//sys boolean waitForGreen;
+//sys boolean stayInPlace;
+//sys boolean sleepMode;
+//sys boolean goToWhiteZone;
+//sys boolean eightStages; 
+
+env DimX targetX;
+env DimY targetY;
+env boolean greenLight;
+env boolean cleanRequest;
+env boolean tankIsEmpty;
+
+
+// *********************************************
+// ***      General Task Requirements        ***
+// *********************************************
+
+// Target won't be placed at (0,0)
+asm alw targetX != 0 | targetY != 0;
+
+// Target and robot won't be placed at the obstacles' cells 
+predicate avoidingObstacles(DimX x, DimY y):
+	 forall i in Int(1..5) .
+	((y = 1 | y = 4) -> x != i);
+	
+asm alw targetY = 7 -> (targetX != 1 & targetX != 4);
+asm alw avoidingObstacles(targetX, targetY);
+
+gar alw robotY = 7 -> (robotX != 1 & robotX != 4);
+gar alw avoidingObstacles(robotX, robotY);
+
+define
+	fullTank:= tank = 5;
+	zeroState:= robotX = 0 & robotY = 0;
+	inTarget:= robotX = targetX & robotY = targetY; 
+	inOrange:= (robotY = 0 & robotX > 0 & robotX < 6) | (robotY > 1 & robotY < 4 & robotX > 0 & robotX < 6) | (robotY > 4 & robotY < 7 & robotX > 0 & robotX < 6);
+//	inOrange:= forall i in Int(1..5) .
+//					forall j in Int(0..6) .
+//						robotX = i & robotY = j;
+
+// Robot steps
+gar alw (robotX + 1 = next(robotX) & robotY = next(robotY)) |
+	 (robotX - 1 = next(robotX) & robotY = next(robotY)) | 
+	(robotY + 1 = next(robotY) & robotX = next(robotX)) | 
+	(robotY - 1 = next(robotY) & robotX = next(robotX)) |
+	(robotY = next(robotY) & robotX = next(robotX));
+
+// Initial status
+gar ini zeroState & (tank = 0) & (iniCounter = 0) & (waitAfterEmpty = 0) & (rotateRobot = 0)
+ & (cleaningCounter = 0) & (orangeCounter = 0);
+asm ini !cleanRequest & tankIsEmpty & !greenLight;
+
+// If there is a cleaning request from a target, the robot should eventually visit it
+gar robotAtCleanCellWhenRequested:
+		S_responds_to_P_globally(inTarget, cleanRequest);
+		
+//gar alwEv inTarget;
+
+// A cleaning request remains true until the robot visits the target and cleans it
+asm alw (!inTarget & cleanRequest) -> next(cleanRequest) = true;
+
+// After robot arrives at target - cleanRequest becomes false
+asm alw (inTarget & cleanRequest) -> next(cleanRequest) = false;
+
+// target doesn't move before robot cleans it
+asm alw cleanRequest -> (targetX = next(targetX) & targetY = next(targetY));
+
+// green light signal is true infinitely often in every run  
+asm alwEv greenLight;
+
+//gar alw (zeroState | inOrange) & !greenLight -> stayInPlace(robotX, robotY);
+
+gar alw robotColor = GREEN <-> inTarget & !fullTank; 
+gar alw robotColor = YELLOW <-> fullTank; 
+gar alw robotColor = RED <-> !greenLight & ((iniCounter = 7 & zeroState) | (orangeCounter = 7)); 
+//gar alw robotColor = GRAY <-> sleepMode
+
+
+
+// *********************************************
+// ***          Property #1                  ***
+// *********************************************
+
+// Robot does not rotate while not in the orange zone
+gar alw !inOrange -> rotateRobot = next(rotateRobot);
+
+gar alw inOrange <-> isOrange = true;
+
+// Robot optional rotations 
+gar alw rotateRobot + 1 = next(rotateRobot) | rotateRobot = next(rotateRobot) |
+ rotateRobot - 3 = next(rotateRobot);
+ 
+// Robot rotates while in the orange zone;
+gar alw inOrange & (rotateRobot < 3) -> next(rotateRobot) = rotateRobot + 1;
+gar alw inOrange & rotateRobot = 3 -> next(rotateRobot) = rotateRobot - 3;
+	
+
+// *********************************************
+// ***          Property #2                  ***
+// *********************************************
+
+// Robot does not move 
+predicate stayInPlace(DimX x, DimY y):
+	next(x) = x & next(y) = y;
+
+// Increase counting of states in orange zone
+gar alw (inOrange & !inTarget) | (orangeCounter > 4 & orangeCounter < 7) ->
+ orangeCounter + 1 = next(orangeCounter); 
+
+// Zero inOrange counter
+gar alw (orangeCounter = 7 & greenLight) | (!inOrange & greenLight) -> next(orangeCounter) = 0;
+
+// After every 5 consecutive states in the orange zone,
+// the robot should stay in place for at least 2 states
+gar alw orangeCounter >= 5 -> stayInPlace(robotX, robotY);
+
+// Robot waits for green light
+gar alw (orangeCounter = 7 & !greenLight) -> stayInPlace(robotX, robotY);
+
+
+//gar trig [true]*[!inOrange][inOrange]{5} |=> [stayInPlace(robotX, robotY)]{3,}[greenLight]; 	
+	 
+	 
+//gar alw !inOrange -> !stayInPlace;
+
+// After robot stays in place for 2 stages,
+// robot waits for a “green light” before it continues to move 
+//gar trig [stayInPlace]*[!stayInPlace] |=> [waitForGreen][true]; 
+
+// stayInPlace and waitForGreen are false in any other state  	 
+//gar trig [true][!inOrange]*[inOrange]{0,4} |=> [!stayInPlace];	
+	
+// Robot can continue move after green light is on
+//gar alw greenLight -> !waitForGreen;
+
+//gar trig [!greenLight]*[greenLight] |=> [!waitForGreen][true];
+	
+ 
+	 
+// *********************************************
+// ***          Property #3                  ***
+// *********************************************
+
+// Increase cleaning counter
+gar alw (inTarget & !fullTank & cleanRequest) -> next(cleaningCounter) = 1;
+gar alw (inTarget & !fullTank & !cleanRequest & (cleaningCounter >= 1 & cleaningCounter < 5)) ->
+ next(cleaningCounter) = cleaningCounter + 1;
+
+// Zero cleaning counter
+gar alw cleaningCounter = 5 -> next(cleaningCounter) = 0;
+
+//When the robot visits a target location,
+//it should stay there for at least 5 states
+//unless tank is full
+gar alw cleaningCounter > 0 & cleaningCounter <= 5 -> stayInPlace(robotX, robotY);
+
+
+//gar trig [true]*[(inTarget & cleanRequest & !fullTank)] |=> [stayInPlace]{5,}[!stayInPlace];
+
+//gar alwEv !stayInPlace;
+// *********************************************
+// ***          Property #4                  ***
+// *********************************************
+
+// Increasing the tank counter when cleaning a target
+gar alw (tank < 5) & inTarget & cleanRequest -> tank + 1 = next(tank);
+
+// Tank counter optional moves
+gar alw tank + 1 = next(tank) | tank = next(tank) | tank - 5 = next(tank);
+
+// fullTank indicator doesn't change while not in zeroState
+gar alw fullTank & !zeroState -> next(tank) = tank;
+
+gar alw !inTarget | (fullTank & zeroState & !tankIsEmpty) -> next(tank) = tank;
+
+// Tank is full until environment reports that the tank has been emptied
+//gar alw zeroState & fullTank & !tankIsEmpty -> next(tank) = tank;
+
+// zero tank after tank has been emptied
+gar alw tankIsEmpty & zeroState & fullTank-> next(tank) = 0;
+
+// Robot goes to zeroState when tank is full
+gar zeroStateWhenFull:
+	S_responds_to_P_globally(zeroState, fullTank);
+
+// Robot waits at zeroState until environment reports that the tank has been emptied 
+gar alw zeroState & !tankIsEmpty & fullTank -> next(robotX) = 0 & next(robotY) = 0;
+
+// TankIsEmpty remains true while robot is waiting at zeroState
+asm alw !zeroState | (waitAfterEmpty = 1) -> tankIsEmpty = next(tankIsEmpty);
+
+// Assuming the environment will eventually report that the tank has been emptied
+asm alwEv tankIsEmpty;
+
+// Increasing waitAfterEmpty counter - wait for 2 stages
+gar alw tankIsEmpty & (waitAfterEmpty < 2) -> waitAfterEmpty + 1 = next(waitAfterEmpty);
+
+// Robot waits at zeroState for at least 2 stages
+// TODO: check if needs to be replaced with next(robotX) = 0 & next(robotY) = 0 
+gar alw (waitAfterEmpty < 2) & !tankIsEmpty -> next(robotX) = 0 & next(robotY) = 0;
+
+// Counter optional moves
+gar alw waitAfterEmpty + 1 = next(waitAfterEmpty) | waitAfterEmpty = next(waitAfterEmpty) |
+ waitAfterEmpty - 2 = next(waitAfterEmpty);
+
+// WaitAfterEmpty does not change when is not in use
+gar alw !tankIsEmpty -> waitAfterEmpty = next(waitAfterEmpty);
+
+// Zero waitAfterEmpty counter
+gar alw tankIsEmpty & (waitAfterEmpty = 2) -> next(waitAfterEmpty) = waitAfterEmpty - 2;
+
+	 
+// *********************************************
+// ***          Property #5                  ***
+// *********************************************
+
+//// Count consecutive states with no dirty target
+//gar alw !cleanRequest & inOrange & noCleaningCounter < 8 -> next(noCleaningCounter) = noCleaningCounter + 1;
+//
+//// Zero counter when there is a clean request
+//gar alw cleanRequest | inOrange -> next(noCleaningCounter) = 0;
+//
+//// counter steps
+//gar alw next(noCleaningCounter) = 0 | next(noCleaningCounter) = noCleaningCounter + 1; 
+
+//gar trig [true]*[!cleanRequest]{9} |=> [eightStages];
+//
+//gar trig [true][cleanRequest]*[!cleanRequest]{0,8} |=> [!eightStages];	
+//	
+//gar trig [true]*[noCleaningCounter = 8] |=> [inOrange]{0,}[!inOrange & sleepMode];
+	
+//gar robotEntersSleepModeUnlessInDirtyTarget:
+//	S_and_T_without_Z_responds_to_P_globally(sleepMode, t, (inTarget & cleanRequest), ) 
+
+// *********************************************
+// ***          Property #6                  ***
+// *********************************************
+
+//// Increasing counter for 8 initial stages
+//gar alw iniCounter < 7 & zeroState -> (next(iniCounter) = iniCounter + 1) & stayInPlace(robotX, robotY);
+//
+//// green light is off during the first 8 stages
+////asm alw iniCounter < 7 -> !greenLight;
+//
+//// After 8 initial stages are done, counter does not change anymore 
+//gar alw iniCounter = 8 -> (iniCounter = next(iniCounter));
+//
+//// Robot start moving only after green light is on
+//gar alw iniCounter = 7 & !greenLight & zeroState -> stayInPlace(robotX, robotY);
+//
+//// Set iniCounter to 8 for the rest of the run 
+//gar alw iniCounter = 7 & greenLight & zeroState -> next(iniCounter) = 8;
+//
+////gar alw (robotX != next(robotX) |  robotY != next(robotY)) -> ONCE(greenLight);
+

@@ -1,0 +1,109 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Robot
+	
+define Dim := 5;
+
+type Coord = Int(0..(Dim - 1));
+type Point = Coord[2];
+
+sys Coord robotX;
+sys Coord robotY;
+
+env Point targetA;
+env Point targetB;
+env Point targetC;
+
+define at_targetA := robotX = targetA[0] & robotY = targetA[1];
+define at_targetB := robotX = targetB[0] & robotY = targetB[1];
+define at_targetC := robotX = targetC[0] & robotY = targetC[1];
+
+define robot_at_origin := at_origin(robotX, robotY);
+
+// Assume that targets cannot be at (0,0) or on one of the obstacles
+asm ini !on_obstacle(targetA[0], targetA[1]) &
+		!on_obstacle(targetB[0], targetB[1]) & 
+		!on_obstacle(targetC[0], targetC[1]);
+asm ini !at_origin(targetA[0], targetA[1]) & 
+		!at_origin(targetB[0], targetB[1]) & 
+		!at_origin(targetC[0], targetC[1]);
+
+// Assume that target locations never change during a run
+asm alw fixed_inplace(targetA[0], targetA[1]) &
+		fixed_inplace(targetB[0], targetB[1]) &
+		fixed_inplace(targetC[0], targetC[1]);
+
+// Assume that target locations cannot be at (4,4)
+asm alw !(targetA[0] = 4 & targetA[1] = 4) &
+		!(targetB[0] = 4 & targetB[1] = 4) &
+		!(targetC[0] = 4 & targetC[1] = 4);
+// Make sure robot doesn't walk over obstacles
+gar alw !on_obstacle(robotX, robotY);	
+
+// Move robot by at most 1 step each state: 
+gar alw next(robotY) = robotY - 1 | next(robotY) = robotY + 1 | next(robotY) = robotY;	
+gar alw next(robotX) = robotX - 1 | next(robotX) = robotX + 1 | next(robotX) = robotX;
+
+predicate on_obstacle(Coord x, Coord y):
+	(x = 1 & y = 1) | (x = 2 & y = 1) | (x = 0 & y = 3) | (x = 3 & y = 3) | (x = 3 & y = 4);
+
+predicate at_origin(Coord x, Coord y):
+	x = 0 & y = 0;
+
+predicate fixed_inplace(Coord x, Coord y):
+	x = next(x) & y = next(y);
+	
+
+// Fix the initial location of the robot at (0,0)
+gar ini robot_at_origin;
+
+// Cause the robot to complete rounds infinitely
+gar alwEv at_targetA;
+
+// Color of origin	
+sys {RED, GREEN} origin_color;
+
+type Target = {NONE, A, B, C};
+
+// first_target is the first target that was visited
+sys Target first_target;
+
+// current_target is the last target that were visited
+sys Target current_target;
+
+gar ini first_target = NONE;
+
+// Both variables are NONE together and are not NONE together
+gar alw first_target = NONE <-> current_target = NONE;
+
+// Once a target was visited, first target cannot be NONE.
+gar alw ONCE(at_targetA | at_targetB | at_targetC) -> first_target != NONE;
+
+// first_target should always remain the same unless a target is visited for the first time
+gar alw first_target = next(first_target) | 
+		first_target = NONE & next(first_target) = A & next(current_target) = A & next(at_targetA) |
+		first_target = NONE & next(first_target) = B & next(current_target) = B & next(at_targetB) |
+		first_target = NONE & next(first_target) = C & next(current_target) = C & next(at_targetC);
+
+// Before any target visit the color of origin is RED
+gar alw	first_target = NONE -> origin_color = RED;
+
+// In the middle of a round, the color of origin is GREEN and when reached the last target the color is RED
+gar alw first_target = A & current_target = C -> origin_color = RED; // If A is first then C is last
+gar alw first_target = A & current_target != C -> origin_color = GREEN;
+gar alw first_target = B & current_target = A -> origin_color = RED; // If B is first then A is last
+gar alw first_target = B & current_target != A -> origin_color = GREEN;
+gar alw first_target = C & current_target = B -> origin_color = RED; // If C is first then B is last
+gar alw first_target = C & current_target != B -> origin_color = GREEN; 
+
+// Enforce order: ... -> A -> B -> C -> A -> ...
+//current_target A can be changed only to B if target B is visited, or stay A if no target was visited
+gar alw current_target = A implies (next(current_target) = A & !next(at_targetA | at_targetB | at_targetC)) | 
+								(next(at_targetB) & next(current_target) = B);
+//current_target B can be changed only to C if target C is visited, or stay B if no target was visited								
+gar alw current_target = B implies (next(current_target) = B & !next(at_targetA | at_targetB | at_targetC)) |
+								(next(at_targetC) & next(current_target) = C);
+//current_target C can be changed only to A if target A is visited, or stay C if no target was visited												
+gar alw current_target = C implies (next(current_target) = C & !next(at_targetA | at_targetB | at_targetC)) |
+								(next(at_targetA) & next(current_target) = A);
+

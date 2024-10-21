@@ -1,0 +1,106 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Variant2
+
+define DX := 4;
+define DY := 4;
+define upper:=4;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+type Coord = Int(0..upper);
+
+sys DimX robotX;
+sys DimY robotY;
+sys {UP, DOWN, LEFT, RIGHT, UP_RIGHT, UP_LEFT, DOWN_RIGHT, DOWN_LEFT} move;
+
+env Coord[2] tar1;
+env Coord[2] tar2;
+env Coord[2] tar3;
+
+define p1 := robotX=0 & robotY=0;
+define o1 := robotX=1 & robotY=1; 
+define o2 := robotX=2 & robotY=1;
+define o3 := robotX=0 & robotY=3; 
+define o4 := robotX=3 & robotY=3;
+define o5 := robotX=3 & robotY=4; 
+define atTar1 := robotX = tar1[0] & robotY = tar1[1];
+define atTar2 := robotX = tar2[0] & robotY = tar2[1];
+define atTar3 := robotX = tar3[0] & robotY = tar3[1];
+
+// Target locations are not on obstacles, on (0,0) or on (4,4)
+asm alw legalTarget(tar1[0],tar1[1]);
+asm alw legalTarget(tar2[0],tar2[1]);
+asm alw legalTarget(tar3[0],tar3[1]);
+
+predicate legalTarget(Coord tarX, Coord tarY):
+(!(tarX = 0 & tarY = 0)) &
+(!(tarX = 1 & tarY = 1)) &
+(!(tarX = 2 & tarY = 1)) &
+(!(tarX = 0 & tarY = 3)) &
+(!(tarX = 3 & tarY = 3)) &
+(!(tarX = 3 & tarY = 4)) &
+(!(tarX = 4 & tarY = 4));
+
+// All three targets are different
+asm alw !(tar1[0]=tar2[0] & tar1[1]=tar2[1]);
+asm alw !(tar1[0]=tar3[0] & tar1[1]=tar3[1]);
+asm alw !(tar2[0]=tar3[0] & tar2[1]=tar3[1]);
+
+// Target locations are fixed throughout the whole run
+asm alw tar1[0]=next(tar1[0]) & tar1[1]=next(tar1[1]);
+asm alw tar2[0]=next(tar2[0]) & tar2[1]=next(tar2[1]);
+asm alw tar3[0]=next(tar3[0]) & tar3[1]=next(tar3[1]);
+
+// The robot's start position is (0,0)
+gar ini p1;
+
+// Defining the possible moves
+gar alw move=UP implies minusOneY(robotY) & fixX(robotX);
+gar alw move=DOWN implies plusOneY(robotY) & fixX(robotX);
+gar alw move=LEFT implies minusOneX(robotX) & fixY(robotY);
+gar alw move=RIGHT implies plusOneX(robotX) & fixY(robotY);
+gar alw move=UP_RIGHT implies UP_RIGHT(robotX, robotY);
+gar alw move=DOWN_LEFT implies DOWN_LEFT(robotX, robotY);
+gar alw move=UP_LEFT implies UP_LEFT(robotX, robotY);
+gar alw move=DOWN_RIGHT implies DOWN_RIGHT(robotX, robotY);
+
+predicate plusOneX (DimX c):
+c + 1 = next (c) | (c = upper & next(c)=c);
+predicate plusOneY (DimY c):
+c + 1 = next (c) | (c = upper & next(c)=c);
+predicate minusOneX (DimX c):
+c -1 = next (c) | (c = 0 & next(c)=c);
+predicate minusOneY (DimY c):
+c -1 = next (c) | (c = 0 & next(c)=c);
+predicate fixX (DimX c):
+next(c)=c;
+predicate fixY (DimY c):
+next(c)=c;
+predicate UP_RIGHT (DimX x, DimY y):
+((x + 1 = next (x)) & (y - 1 = next (y))) | ((x = upper | y = 0) & (next(x)=x) & next(y)=y);
+predicate DOWN_LEFT (DimX x, DimY y):
+((x - 1 = next (x)) & (y + 1 = next (y))) | ((x = 0 | y = upper) & (next(x)=x) & next(y)=y);
+predicate UP_LEFT (DimX x, DimY y):
+((x - 1 = next (x)) & (y - 1 = next (y))) | ((x = 0 | y = 0) & (next(x)=x) & next(y)=y);
+predicate DOWN_RIGHT (DimX x, DimY y):
+((x + 1 = next (x)) & (y + 1 = next (y))) | ((x = upper | y = upper) & (next(x)=x) & next(y)=y);
+
+// The robot's location is not on obstacles
+gar alw !o1;
+gar alw !o2;
+gar alw !o3;
+gar alw !o4;
+gar alw !o5;
+
+// The robot visits all the target locations in a strict order
+gar S_responds_to_P_globally(atTar2, atTar1);
+gar P_is_false_after_Q_until_R(atTar3, atTar1, atTar2);
+
+gar S_responds_to_P_globally(atTar3, atTar2);
+gar P_is_false_after_Q_until_R(atTar1, atTar2, atTar3);
+
+gar S_responds_to_P_globally(atTar1, atTar3);
+gar P_is_false_after_Q_until_R(atTar2, atTar3, atTar1);
+
+gar alwEv (atTar1 | atTar2 | atTar3);

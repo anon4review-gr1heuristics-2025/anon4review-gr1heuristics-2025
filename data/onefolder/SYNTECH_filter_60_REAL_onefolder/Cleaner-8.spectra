@@ -1,0 +1,187 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Cleaner
+
+define DX := 7;
+define DY := 7;
+define upper:=7;
+define NumObstacles := 12;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+type Coord = Int(0..upper);
+ 
+sys DimX robotX;
+sys DimY robotY;
+sys {UP, DOWN, LEFT, RIGHT, STAY} move;
+sys boolean cleaning_request;
+sys {deg0, deg90, deg180, deg270} deg;
+sys boolean orange;
+sys boolean waitingForGreenLight;
+sys boolean fullTank; 
+
+env Coord[2] target;
+env boolean greenLight;
+env boolean envEmptiedTank;
+
+// *****************************************
+// *      General Task Requirements        *
+// *****************************************
+define p1 := robotX=0 & robotY=0;
+define doneCleaning := PREV(atTarget) & !atTarget & !fullTank;
+
+define 
+  obstaclesX[NumObstacles] := {1,2,3,4,5,1,2,3,4,5,1,4};
+  obstaclesY[NumObstacles] := {1,1,1,1,1,4,4,4,4,4,7,7};
+
+// The robot's location is not on obstacles
+gar noCollisionsWithObstacles:
+	alw forall i in Int(0..(NumObstacles-1)).!(robotX = obstaclesX[i] & robotY = obstaclesY[i]);
+
+define atTarget := robotX = target[0] & robotY = target[1];
+
+// A cleaning target can be any cell that is not (0,0) and not an obstacle
+asm legalTarget:
+	alw (forall i in Int(0..(NumObstacles-1)).!(target[0] = obstaclesX[i] & target[1] = obstaclesY[i]))
+	& !(target[0] = 0 & target[1] = 0);
+
+// Target is fixed until the robot visits it
+asm alw !doneCleaning -> target[0]=next(target[0]) & target[1]=next(target[1]);
+
+// The robot's start position is (0,0)
+gar ini p1;
+
+// Defining the possible moves
+gar alw move=UP implies minusOneY(robotY) & fixX(robotX);
+gar alw move=DOWN implies plusOneY(robotY) & fixX(robotX);
+gar alw move=LEFT implies minusOneX(robotX) & fixY(robotY);
+gar alw move=RIGHT implies plusOneX(robotX) & fixY(robotY);
+gar alw move=STAY implies fixX(robotX) & fixY(robotY);
+
+predicate plusOneX (DimX c):
+c + 1 = next (c) | (c = upper & next(c)=c);
+predicate plusOneY (DimY c):
+c + 1 = next (c) | (c = upper & next(c)=c);
+predicate minusOneX (DimX c):
+c -1 = next (c) | (c = 0 & next(c)=c);
+predicate minusOneY (DimY c):
+c -1 = next (c) | (c = 0 & next(c)=c);
+predicate fixX (DimX c):
+next(c)=c;
+predicate fixY (DimY c):
+next(c)=c;
+
+gar ini cleaning_request = false;
+gar alwEv cleaning_request;
+
+// If there is a cleaning request from a target, the robot should eventually visit it
+gar trig [true]*[cleaning_request & !fullTank] |=> [true]*[atTarget];
+
+// A cleaning request remains true until the robot visits the target and cleans it
+gar P_is_true_After_Q_until_R(cleaning_request, cleaning_request, doneCleaning);
+
+// *****************************************
+// *          Property #1                  *
+// *****************************************
+
+define atOrangeZone := (robotX > 0 & robotX < 6) &
+(robotY=0 | robotY=2 | robotY=3 | robotY=5 | robotY=6);
+
+gar alw !atOrangeZone -> !orange;
+gar alw atOrangeZone -> orange;
+
+gar ini deg = deg0;
+gar alw deg=deg0 & atOrangeZone implies next(deg)=deg90;
+gar alw deg=deg90 & atOrangeZone implies next(deg)=deg180;
+gar alw deg=deg180 & atOrangeZone implies next(deg)=deg270;
+gar alw deg=deg270 & atOrangeZone implies next(deg)=deg0;
+
+// *****************************************
+// *          Property #2                  *
+// *****************************************
+
+asm alwEv greenLight;
+
+counter consecutiveStatesInOrangeZone(0..5){
+	consecutiveStatesInOrangeZone = 0;
+	inc: atOrangeZone & PREV(atOrangeZone) & move!=STAY;
+	reset: consecutiveStatesInOrangeZone = 5 & greenLight;
+	overflow: false;
+}
+
+gar trig [true]*[consecutiveStatesInOrangeZone = 5] |=> [move=STAY]{2,}[move!=STAY];
+
+define waitForGreen1 := consecutiveStatesInOrangeZone = 5 & !greenLight;
+gar alw waitForGreen1 -> next(move)=STAY;
+
+// *****************************************
+// *          Property #3                  *
+// *****************************************
+
+// When the robot visits a target location, it should stay there for at
+// least 5 states (for cleaning) before it may move to another cell 
+gar trig [true]*[atTarget & !fullTank] |=> [true][atTarget]{5,}[!atTarget];
+
+// *****************************************
+// *          Property #4                  *
+// *****************************************
+//
+
+asm S_responds_to_P_globally(envEmptiedTank, p1);
+
+counter Cleaned5Targets(0..5){
+	Cleaned5Targets = 0;
+	inc: doneCleaning;
+	reset: p1 & envEmptiedTank;
+	overflow: false;
+}
+
+gar alw Cleaned5Targets = 5 -> fullTank;
+gar alw Cleaned5Targets < 5 -> !fullTank;
+gar trig [true]*[fullTank] |=> [true]*[p1];
+gar P_is_true_After_Q_until_R(p1, fullTank & p1, envEmptiedTank);
+gar trig [true]*[fullTank & p1 & envEmptiedTank] |=> [move=STAY]{2,}[move!=STAY];
+
+// *****************************************
+// *          Property #5                  *
+// *****************************************
+
+sys boolean sleepMode; 
+
+counter noDirtyTarget(0..8){
+	noDirtyTarget = 0;
+	inc: !cleaning_request & PREV(!cleaning_request);
+	reset: noDirtyTarget = 8;
+	overflow: false;
+}
+
+define atWhiteZone := false;
+gar S_responds_to_P_globally((!atOrangeZone & atWhiteZone), (noDirtyTarget=8 & atOrangeZone));
+
+monitor boolean sleeping{
+	ini !sleeping;
+	alw atWhiteZone & !cleaning_request <-> next(sleeping);
+}
+
+gar alw sleeping -> next(move) = STAY;
+gar alw sleeping -> sleepMode;
+gar alw !sleeping -> !sleepMode;
+
+// *****************************************
+// *          Property #6                  *
+// *****************************************
+
+counter first8states(0..9){
+	first8states = 0;
+	inc: first8states < 9 & p1 & move=STAY;
+	overflow: false;
+}
+
+gar ini move=STAY;
+gar alw first8states < 9 -> next(move)=STAY;
+
+define waitForGreen2 := first8states=9 & !greenLight;
+gar alw waitForGreen2 -> next(move)=STAY;
+
+gar alw (waitForGreen1 | waitForGreen2) -> waitingForGreenLight;
+gar alw !waitForGreen1 & !waitForGreen2 -> !waitingForGreenLight;

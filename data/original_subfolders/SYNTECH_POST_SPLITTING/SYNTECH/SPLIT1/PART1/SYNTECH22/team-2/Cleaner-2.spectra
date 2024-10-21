@@ -1,0 +1,284 @@
+spec Cleaner
+
+
+define DX := 7;
+define DY := 7;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+type Dim = Int(0..7);
+ 
+sys DimX robotX;
+sys DimY robotY;
+
+sys boolean fullTank;
+sys boolean robotStay;
+sys boolean waitForGreen;
+
+
+env boolean greenLight;
+env boolean emptyTank;
+
+/*
+ * we'll define 'home' as "the robot is at (0,0)
+ * and atTarget as "the robot is at the target"
+ */
+define
+	home := robotX = 0 & robotY =  0;
+	atTarget := (robotX = cleaningTarget[0]) & (robotY = cleaningTarget[1]) & cleanRequest;
+	atOrange := (robotX > 0 & robotX < 6) & (robotY < 7);
+	
+predicate robotStaysInPlace():
+	(robotX = next(robotX)) & (robotY = next(robotY));
+	
+predicate robotWaitsForGreenLight():
+	(waitForGreen & !greenLight) -> (robotStaysInPlace() & next(waitForGreen));
+
+gar ini !waitForGreen;
+
+// *********************************************
+// ***      General Task Requirements        ***
+// *********************************************
+
+/*
+ * At any point in time, there is at most one target location indicating a cell that has to be visited for cleaning.
+ */
+env Dim[2] cleaningTarget;
+env boolean cleanRequest;
+
+/*
+ * From time to time the robot is called to clean a cell, at most one cell at a time. 
+ */
+asm alwEv cleanRequest;
+
+/*
+ * The environment controls a “green light” signal which it sets to be true infinitely often in every run.
+ */
+asm alwEv greenLight;
+
+/*
+ * The robot starts at cell (0,0) with an empty tank. 
+ */
+gar ini !fullTank;
+gar ini home;
+
+/*
+ * The robot can move to adjacent cells horizontally or vertically, but not diagonally.
+ */
+gar robotMoves:
+  alw moveDist(robotX, robotY); 
+ 
+predicate moveDist(DimX x, DimY y):
+	((x+1 = next(x) & y = next(y)) |
+	 (x-1 = next(x) & y = next(y)) |
+	 (x = next(x) & y+1 = next(y)) |
+	 (x = next(x) & y-1 = next(y)) |
+	 (x = next(x) & y = next(y)));
+
+/*
+ * If there is a cleaning request from a target, the robot should eventually visit it.
+ */
+gar alwEv (cleanRequest) -> robotCleaning;
+
+sys boolean ignoreTarget;
+gar ini !ignoreTarget;
+
+/*
+ * A cleaning request remains true until the robot visits the target and cleans it.
+ */
+asm alw (cleanRequest & !atTarget) -> next(cleanRequest);
+asm alw (cleanRequest & atTarget & !finishedCleaning) -> next(cleanRequest);
+
+/*
+ * A cleaning target can be any cell that is not (0,0) and not an obstacle.
+ */
+predicate targetNotOnObstacle(Dim cellX, Dim cellY):
+	(!(cellX = 1 & cellY = 1)) & (!(cellX = 2 & cellY = 1)) & (!(cellX = 3 & cellY = 1)) & (!(cellX = 4 & cellY = 1)) & (!(cellX = 5 & cellY = 1)) &
+	(!(cellX = 1 & cellY = 4)) & (!(cellX = 2 & cellY = 4)) & (!(cellX = 3 & cellY = 4)) & (!(cellX = 4 & cellY = 4)) & (!(cellX = 5 & cellY = 4)) &
+	(!(cellX = 1 & cellY = 7)) & (!(cellX = 4 & cellY = 7));
+
+asm alw targetNotOnObstacle(cleaningTarget[0], cleaningTarget[1]) & !(cleaningTarget[0] = 0 & cleaningTarget[1] = 0);
+gar alw targetNotOnObstacle(robotX, robotY);
+
+
+// *********************************************
+// ***          Property #1                  ***
+// *********************************************
+
+/*
+ * Whenever the robot is in the orange zone, it should repeatedly switch its usual appearance, 
+ * its appearance rotated 90 degrees to the right, 180 degrees to the right, and 270 degrees to the right, in this order, 
+ * until it leaves the orange zone.
+ */
+ sys boolean rotate;
+ gar alw rotate = atOrange;
+
+// *********************************************
+// ***          Property #2                  ***
+// *********************************************
+/*
+ * After every 5 consecutive states in the orange zone,
+ * the robot should stay in place for at least 2 states and then wait for a “green light” before it continues to move.
+ */
+ 
+ counter orangeZone(0..4){
+	//initially not at orange
+	orangeZone=0;
+	//we will count when robot is at orangeZone consecutive and didn't get to 5 consecutive;
+//	inc: (atOrange & !(stay1 & stay2 & waitGreen & greenLight));
+	inc: (atOrange & !(stay1 & stay2 & waitGreen & greenLight) & !robotCleaning);
+	//reset counter when robot is not anymore at orange zone or get to 5 consecutive
+//	reset: (!atOrange | (stay1 & stay2 & waitGreen & greenLight));
+	reset: (!atOrange | (stay1 & stay2 & waitGreen & greenLight) | robotCleaning);
+	//after 5 consecutive states in the orange zone will stay counter = 5; 
+	overflow: keep;
+}
+
+sys boolean after5orange;
+gar alw after5orange iff orangeZone=4;
+
+// if 5 orange states, stay for two states and then wait for green
+sys boolean stay1;
+sys boolean stay2;
+sys boolean waitGreen;
+gar ini !stay1;
+gar ini !stay2;
+gar ini !waitGreen;
+
+//the robot stay in place for at least 2 states and then wait for a “green light” 
+gar alw (orangeZone=4 & !stay1 & !stay2 & !waitGreen) -> (robotStaysInPlace() & next(stay1 & !stay2 & !waitGreen));
+gar alw (orangeZone=4 & stay1 & !stay2 & !waitGreen) -> (robotStaysInPlace() & next(stay1 & stay2 & !waitGreen));
+gar alw (orangeZone=4 & stay1 & stay2 & !waitGreen) -> (robotStaysInPlace() & next(waitGreen & stay1 & stay2));
+gar alw (orangeZone=4 & stay1 & stay2 & waitGreen & !greenLight) -> (robotStaysInPlace() & next(waitGreen & stay1 & stay2));
+gar alw (orangeZone=4 & stay1 & stay2 & waitGreen & greenLight) -> next(!waitGreen & !stay1 & !stay2);
+
+gar alw (orangeZone<4) -> next(!stay1 & !stay2 & !waitGreen);
+ 
+// *********************************************
+// ***          Property #3                  ***
+// *********************************************
+/*
+ * When the robot visits a target location, 
+ * it should stay there for at least 5 states (for cleaning) before it may move to another cell. 
+ */ 
+sys boolean finishedCleaning;
+sys boolean robotCleaning;
+gar ini !robotCleaning;
+gar ini !finishedCleaning;
+gar alw (atTarget & !ignoreTarget & !finishedCleaning) -> robotCleaning;
+
+gar alw (!atTarget | ignoreTarget) -> !robotCleaning;
+
+ counter cleaning(0..6){
+	//initially not cleaning
+	cleaning=0;
+	//we will count when robot is cleaning and didn't get to 5 consecutive;
+	inc: (robotCleaning);
+	//reset counter when robot finished cleaning
+	reset: (finishedCleaning);
+	//after 5 consecutive states in the orange zone will stay counter = 5; 
+	overflow: keep;
+}
+
+gar ini cleaning = 0;
+gar alw (cleaning < 5) -> !finishedCleaning;
+
+gar alw (atTarget & !ignoreTarget & !finishedCleaning) -> robotStaysInPlace();
+gar alw finishedCleaning -> next(!robotCleaning);
+gar alwEv finishedCleaning;
+
+gar alw !cleanRequest -> robotStay;
+
+asm targetDontMoveUntilFinishesCleaning:
+  alw (cleanRequest & !finishedCleaning) -> (cleaningTarget[0]=next(cleaningTarget[0]) & cleaningTarget[1]=next(cleaningTarget[1]));
+
+
+// *********************************************
+// ***          Property #4                  ***
+// *********************************************
+
+counter tank(0..5){
+	//initially empty tank
+	tank=0;
+	//we will count each time the robot finishes cleaning a target
+	inc: (!finishedCleaning & next(finishedCleaning));
+	//reset counter when tank is emptied by the environment
+	reset: (emptyTank & home);
+	//after 5 consecutive states in the orange zone will stay counter = 5; 
+	overflow: keep;
+}
+
+asm alwEv emptyTank;
+gar alw fullTank iff (tank = 5);
+gar alwEv fullTank -> home;
+
+gar alw (fullTank & home & !emptyTank) -> next(home & fullTank);
+
+gar trig [true]*[home & fullTank & !emptyTank]*[home & emptyTank] |=> [home]{2};
+gar alw fullTank iff ignoreTarget;
+
+
+// *********************************************
+// ***          Property #5                  ***
+// *********************************************
+
+//no dirty target for 8 consecutive states
+counter notDirty(0..8){
+	//initially 0 steps without dirt
+	notDirty=0;
+	//we will count when there is no dirt consecutive- no clean request
+	inc: (!cleanRequest);
+	//reset counter when there is dirt - clean request
+	reset: (cleanRequest);
+	//after 8 consecutive states not dirty will stay counter = 8; 
+	overflow: keep; //mod or keep
+}
+
+sys boolean sleep;
+sys boolean staySleep1;
+sys boolean staySleep2;
+gar ini !sleep;
+gar ini !staySleep1;
+gar ini !staySleep2;
+
+////Whenever there is no dirty target for 8 consecutive states and the robot is in the orange zone, 
+////it should go to any cell in the white zone, and then enter “sleep mode”.
+gar alw (notDirty=8 & atOrange) -> goToWhite(robotX);
+predicate goToWhite(DimX robotX):
+	next(robotX) = robotX + 1;
+/*
+ * Whenever there is no dirty target for 8 consecutive states and the robot is in the white zone, 
+ * it should enter “sleep mode” immediately,
+ * and not move until at least 2 states after the appearance of a new dirty target. 
+ */
+gar alw (notDirty=8 & !atOrange) -> sleep;
+
+gar alw (sleep & (!cleanRequest)) -> next(sleep & !staySleep1 & !staySleep2);
+gar alw (sleep & cleanRequest & !staySleep1 & !staySleep2) -> next(sleep & staySleep1 & !staySleep2);
+gar alw (sleep & cleanRequest & staySleep1 & !staySleep2) -> next(sleep & staySleep1 & staySleep2);
+gar alw (sleep & cleanRequest & staySleep1 & staySleep2) -> next(!sleep & !staySleep1 & !staySleep2);
+
+gar alw sleep -> robotStaysInPlace();
+gar alw (!sleep & next(notDirty<8)) -> next(!sleep);
+gar alw (!sleep & next(notDirty=8 & atOrange)) -> next(!sleep); 
+
+gar alw (!staySleep1 & !(sleep & cleanRequest)) -> next(!staySleep1);
+gar alw (!staySleep2 & !(sleep & cleanRequest & staySleep1)) -> next(!staySleep2);
+
+
+// *********************************************
+// ***          Property #6                  ***
+// *********************************************
+/*
+ * The robot should not move in the first 8 states of its execution. 
+ * Then it should start moving only when there is “green light”. 
+ */
+sys boolean start;
+gar ini start;
+
+//gar alw (home & !waitGreen) in the first 8 states (gar ini home & !waitGreen) and then wait fir green light
+gar trig [home & !waitGreen & start] |=> [home & !waitGreen & start]{7}[home & waitGreen & start][home & waitGreen & start]*[!waitGreen & !start];
+
+gar alw !start -> next(!start);
+
+

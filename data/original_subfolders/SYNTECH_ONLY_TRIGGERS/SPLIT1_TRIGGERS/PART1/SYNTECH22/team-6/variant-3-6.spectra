@@ -1,0 +1,118 @@
+import "../imports/DwyerPatternsNamed.spectra"
+
+spec Robot
+define DX := 4;
+define DY := 4;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+predicate isValidGoal(DimX x, DimY y):
+	((x >= 0) & (x <= DX) & (y >= 0) & (y <= DY) & 
+		!((x = 0) & (y = 0)) &
+		(x != 1 | y != 1) &
+		(x != 2 | y != 1) &
+		(x != 0 | y != 3) &
+		(x != 3 | y != 3) &
+		(x != 3 | y != 4));
+
+// receive the goal points coordinates as inputs
+env DimX[3] goalsX;
+env DimY[3] goalsY;
+env boolean hasProblem;
+
+define atBase := ((robotX = 0) & (robotY = 0));
+define atGoal1 := ((robotX = goalsX[0]) & (robotY = goalsY[0]));
+define atGoal2 := ((robotX = goalsX[1]) & (robotY = goalsY[1]));
+define atGoal3 := ((robotX = goalsX[2]) & (robotY = goalsY[2]));
+
+sys boolean isRobotYellow;
+sys DimX robotX;
+sys DimY robotY;
+sys {UP, DOWN, LEFT, RIGHT, STAY} move;
+gar alw move=UP implies (next(robotY) = robotY - 1) & (next(robotX) = robotX);
+gar alw move=DOWN implies (next(robotY) = robotY + 1) & (next(robotX) = robotX);
+gar alw move=LEFT implies (next(robotY) = robotY) & (next(robotX) = robotX - 1);
+gar alw move=RIGHT implies (next(robotY) = robotY) & (next(robotX) = robotX + 1);
+gar alw move=STAY implies (next(robotY) = robotY) & (next(robotX) = robotX);
+
+// initial state
+gar ini (robotX=0) & (robotY=0);
+
+// only move inside the board
+gar alw (robotX=0 implies move!=LEFT) &
+		(robotX=DX implies move!=RIGHT) &
+		(robotY=0 implies move!=UP) &
+		(robotY=DY implies move!=DOWN);
+		
+// stay away from the obstacles
+gar stayOffObstacles:
+	alw (robotX != 1 | robotY != 1) &
+		(robotX != 2 | robotY != 1) &
+		(robotX != 0 | robotY != 3) &
+		(robotX != 3 | robotY != 3) &
+		(robotX != 3 | robotY != 4);
+		
+// checks that the goals are valid
+asm alw isValidGoal(goalsX[0], goalsY[0]) & isValidGoal(goalsX[1], goalsY[1]) & isValidGoal(goalsX[2], goalsY[2]);
+
+// check that goals differ from one another
+asm alw !(goalsX[0] = goalsX[1] & goalsY[0] = goalsY[1]) & !(goalsX[0] = goalsX[2] & goalsY[0] = goalsY[2]) & !(goalsX[2] = goalsX[1] & goalsY[2] = goalsY[1]);
+
+// checks that the goals never change
+asm alw (goalsX[0] = next(goalsX[0])) & 
+		(goalsX[1] = next(goalsX[1])) & 
+		(goalsX[2] = next(goalsX[2])) & 
+		(goalsY[0] = next(goalsY[0])) & 
+		(goalsY[1] = next(goalsY[1])) & 
+		(goalsY[2] = next(goalsY[2]));
+										
+// make sure we keep reaching our goal points and returning to the base point (0, 0)
+gar alwEv atGoal1;
+gar alwEv atGoal2;
+gar alwEv atGoal3;
+
+// this is just a notification from env that an error with the robot has occurred
+//asm alw hasProblem -> next(hasProblem) = false;
+
+// assume that engine errors are at least 15 turns apart from one another
+asm trig [true]*[hasProblem] |=> [!hasProblem]{15,};
+
+// robot always starts without any engine problems
+gar ini isRobotYellow = false;
+
+// an engine problem only occurs when robot is not at base station because otherwise it is fixed immediately
+define malfunction := (hasProblem & !atBase);
+
+// when engine problem occurs, return to base for fixing in at least 10 turns (before another engine error occurs)
+// we wanted to use this but because of goals and obstacles blocking the way it might not always be possible and seemed more correct to use a pattern than to increase the amount of turns from 10 to 15
+//gar trig [true]*[malfunction] |=> [true]{0,10}[atBase];
+
+// it seemed like sometimes the robot reaches the base because it's wandering around and has nothing to do with the engine error
+gar S_responds_to_P_globally(atBase, malfunction);
+
+// engine problem gets fixed at base station
+gar alw atBase -> next(isRobotYellow) = false;
+
+// when engine problem occurs robot turns yellow
+gar alw malfunction -> next(isRobotYellow) = true;
+
+// robot always maintains its engine state except for two possible event: robot arrives at base or an engine problem occurred
+gar alw (!atBase & !malfunction) -> (next(isRobotYellow) = isRobotYellow);
+
+sys boolean red1;
+gar ini red1 = false;
+gar trig [true]*[atGoal1] |=> [red1 & !atGoal1]{3,5}[!red1];
+gar alw (!red1 & !atGoal1) -> next(red1) = false;
+
+sys boolean red2;
+gar ini red2 = false;
+gar trig [true]*[atGoal2] |=> [red2 & !atGoal2]{3,5}[!red2];
+gar alw (!red2 & !atGoal2) -> next(red2) = false;
+
+sys boolean red3;
+gar ini red3 = false;
+gar trig [true]*[atGoal3] |=> [red3 & !atGoal3]{3,5}[!red3];
+gar alw (!red3 & !atGoal3) -> next(red3) = false;
+ 
+ 

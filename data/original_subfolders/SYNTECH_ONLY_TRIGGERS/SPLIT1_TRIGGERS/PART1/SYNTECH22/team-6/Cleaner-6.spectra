@@ -1,0 +1,221 @@
+import "../imports/DwyerPatternsNamed.spectra"
+spec Cleaner
+
+
+// *********************************************
+// ***      General Task Requirements        ***
+// *********************************************
+
+// system variables
+sys DimX robotX;
+sys DimY robotY;
+sys {UP, DOWN, LEFT, RIGHT, STAY} move;
+
+
+// environment variables
+env DimX targetX;
+env DimY targetY;
+env boolean isDirty;
+env boolean greenLight;
+
+
+// definitions
+define DX := 7;
+define DY := 7;
+define atTarget := ((robotX = targetX) & (robotY = targetY));
+define atOrange := ((robotX >= 1) & (robotX <= 5) & (robotY < 7));
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+
+/*
+ * movement
+ */
+gar alw move=UP implies (next(robotY) = robotY - 1) & (next(robotX) = robotX);
+gar alw move=DOWN implies (next(robotY) = robotY + 1) & (next(robotX) = robotX);
+gar alw move=LEFT implies (next(robotY) = robotY) & (next(robotX) = robotX - 1);
+gar alw move=RIGHT implies (next(robotY) = robotY) & (next(robotX) = robotX + 1);
+gar alw move=STAY implies (next(robotY) = robotY) & (next(robotX) = robotX);
+
+// only move inside the board
+gar alw (robotX=0 implies move!=LEFT) &
+		(robotX=DX implies move!=RIGHT) &
+		(robotY=0 implies move!=UP) &
+		(robotY=DY implies move!=DOWN);
+		
+// stay away from the obstacles
+gar stayOffObstacles:
+	alw (robotX != 1 | robotY != 1) &
+		(robotX != 2 | robotY != 1) &
+		(robotX != 3 | robotY != 1) &
+		(robotX != 4 | robotY != 1) &
+		(robotX != 5 | robotY != 1) &
+		(robotX != 1 | robotY != 4) &
+		(robotX != 2 | robotY != 4) &
+		(robotX != 3 | robotY != 4) &
+		(robotX != 4 | robotY != 4) &
+		(robotX != 5 | robotY != 4) &
+		(robotX != 1 | robotY != 7) &
+		(robotX != 4 | robotY != 7);
+		
+// initial state
+gar ini (robotX=0) & (robotY=0);
+
+//target is valid
+predicate isValidTarget(DimX x, DimY y):
+	(x != 0 | y != 0) &
+	(x != 1 | y != 1) &
+	(x != 2 | y != 1) &
+	(x != 3 | y != 1) &
+	(x != 4 | y != 1) &
+	(x != 5 | y != 1) &
+	(x != 1 | y != 4) &
+	(x != 2 | y != 4) &
+	(x != 3 | y != 4) &
+	(x != 4 | y != 4) &
+	(x != 5 | y != 4) &
+	(x != 1 | y != 7) &
+	(x != 4 | y != 7);
+
+asm alw isValidTarget(targetX, targetY);
+
+
+// *********************************************
+// ***          Property #1                  ***
+// *********************************************
+
+// system variables
+sys boolean rotate90;
+sys boolean rotate180;
+sys boolean rotate270;
+
+// rotation variables start as false
+gar ini !rotate90;
+gar ini !rotate180;
+gar ini !rotate270;
+
+// when the robot is not on orange, don't rotate
+gar alw !atOrange -> !rotate90 & !rotate180 & !rotate270;
+
+// counter for color changes
+counter orangeSteps(0..2) {
+//initial
+	orangeSteps = 0;
+//increment at orange
+	inc: atOrange;
+//reset counter every 3 steps or out of orange
+	reset: (!atOrange);
+	overflow: modulo;
+}
+
+gar alw (orangeSteps=0 & atOrange) -> ((rotate90) & (!rotate180) & (!rotate270));
+gar alw (orangeSteps=1 & atOrange) -> ((!rotate90) & (rotate180) & (!rotate270));
+gar alw (orangeSteps=2 & atOrange) -> ((!rotate90) & (!rotate180) & (rotate270));
+
+
+// *********************************************
+// ***          Property #2                  ***
+// *********************************************
+
+// after 5 consecutive states in the orange zone, 
+// the robot should stay at place for at least 2 states and then wait for a green light
+asm alwEv greenLight;
+gar trig [true]*[atOrange]{4} |=> [atOrange & (move = STAY)]{2,}[greenLight];
+
+
+
+// *********************************************
+// ***          Property #3                  ***
+// *********************************************
+
+//when getting to a target, stay there for 5 states
+
+// definitions
+define atBase := ((robotX = 0) & (robotY = 0));
+define cleaning := atTarget & isDirty & !trashFull;
+define targetCleaned := ((targetStays = 5) & cleaning); 
+
+//counter for staying at target
+counter targetStays(1..5) {
+//initial
+	targetStays = 1;
+//increment at target
+	inc: atTarget;
+//reset counter when not on target
+	reset: (!atTarget);
+//can stay longer
+	overflow: keep;
+}
+
+gar alw ((targetStays < 5) & (cleaning)) -> move = STAY;
+gar alwEv !atTarget;
+
+
+// *********************************************
+// ***          Property #4                  ***
+// *********************************************
+
+// system variables
+sys boolean trashFull;
+sys boolean clean;
+
+// environment variables
+env boolean emptyTrash;
+
+
+// target is clean if it was dirty, and only after robot stayed on target for at least 5 turns when trash isn't full
+gar alw clean = targetCleaned;
+
+// no target will remain dirty forever
+gar alwEv clean;
+
+// there will always be a dirty target sometime
+asm alwEv isDirty;
+
+// target does not change until it gets cleaned
+asm alw (!targetCleaned & isDirty) -> (next(targetX) = targetX) & (next(targetY) = targetY);
+
+// if env can only change dirty to not dirty if target was cleaned
+asm alw (PREV(isDirty) & !isDirty) -> PREV(targetCleaned);
+
+
+counter garbageTank(0..5) {
+//initial
+	garbageTank = 0;
+//increment at target
+	inc: (targetCleaned);
+//reset counter when env emptied trash
+	reset: (emptyTrash & trashFull & atBase);
+//can't clean target when trash if full
+	overflow: false;
+}
+
+// after cleaning five targets, trash is full
+gar alw (garbageTank=5) -> trashFull;
+
+// before cleaning five targets, trash is not full
+gar alw (garbageTank < 5) -> !trashFull;
+
+// wait at base until trash is no longer full
+gar alw (atBase & trashFull) -> (move = STAY);
+
+// the trash will always be emptied eventually
+asm alwEv emptyTrash;
+
+
+
+// *********************************************
+// ***          Property #5                  ***
+// *********************************************
+
+gar trig [true]*[!isDirty]{7}[!isDirty & !atOrange] |=> [(move = STAY) & (!isDirty)]*[(move = STAY) & (isDirty)]{2};
+gar trig [true]*[!isDirty]{7}[!isDirty & atOrange] |=> [true]*[(!atOrange)]; //[true]{0,2}[(!atOrange) | (isDirty)];
+
+
+// *********************************************
+// ***          Property #6                  ***
+// *********************************************
+
+gar trig [move != STAY] |=> false;
+gar trig [move = STAY] |=> [move = STAY]{7,}[greenLight];

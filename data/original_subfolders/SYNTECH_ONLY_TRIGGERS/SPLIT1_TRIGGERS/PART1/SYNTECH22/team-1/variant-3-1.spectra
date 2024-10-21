@@ -1,0 +1,192 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Variant3
+
+
+define DX := 5;
+define DY := 5;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+define
+		obs1 := robotX = 0 and robotY = 3;
+		obs2 := robotX = 1 and robotY = 1;
+		obs3 := robotX = 2 and robotY = 1;
+		obs4 := robotX = 3 and robotY = 3;
+		obs5 := robotX = 3 and robotY = 4;
+
+
+define
+		start := robotX = 0 and robotY  = 0;
+//		atTarget := atTargetA or atTargetB or atTargetC;
+		atTargetA := robotX = targetA[0]  and robotY  = targetA[1];
+		atTargetB := robotX = targetB[0]  and robotY  = targetB[1];
+		atTargetC := robotX = targetC[0]  and robotY  = targetC[1];
+				
+sys DimX robotX;
+sys DimY robotY;
+sys boolean targetAIsRed;
+sys boolean targetBIsRed;
+sys boolean targetCIsRed;
+sys boolean robotIsYellow;
+
+env Int(0..DX)[2] targetA;
+env Int(0..DX)[2] targetB;
+env Int(0..DX)[2] targetC;
+env boolean engineProblem;
+
+//targets stay put after being set
+asm alw next(targetA[0]) = targetA[0] and next(targetA[1]) = targetA[1];
+asm alw next(targetB[0]) = targetB[0] and next(targetB[1]) = targetB[1];
+asm alw next(targetC[0]) = targetC[0] and next(targetC[1]) = targetC[1];
+
+//targets are not on obstacles
+asm alw (targetA[0] = 0 -> targetA[1] != 3) and
+		(targetA[0] = 1 -> targetA[1] != 1) and
+		(targetA[0] = 2 -> targetA[1] != 1) and
+		(targetA[0] = 3 -> targetA[1] != 3) and
+		(targetA[0] = 3 -> targetA[1] != 4);
+asm alw (targetB[0] = 0 -> targetB[1] != 3) and
+		(targetB[0] = 1 -> targetB[1] != 1) and
+		(targetB[0] = 2 -> targetB[1] != 1) and
+		(targetB[0] = 3 -> targetB[1] != 3) and
+		(targetB[0] = 3 -> targetB[1] != 4);
+asm alw (targetC[0] = 0 -> targetC[1] != 3) and
+		(targetC[0] = 1 -> targetC[1] != 1) and
+		(targetC[0] = 2 -> targetC[1] != 1) and
+		(targetC[0] = 3 -> targetC[1] != 3) and
+		(targetC[0] = 3 -> targetC[1] != 4);
+		
+//targets are not on start (0,0)
+asm alw (targetA[0] = 0 -> targetA[1] != 0) and
+		(targetB[0] = 0 -> targetB[1] != 0) and
+		(targetC[0] = 0 -> targetC[1] != 0);
+		
+//targets are different from each other
+asm alw (targetA[0] = targetB[0] -> targetA[1] != targetB[1]) and
+		(targetA[0] = targetC[0] -> targetA[1] != targetC[1]) and
+		(targetB[0] = targetC[0] -> targetB[1] != targetC[1]);
+
+//targets are not one point away
+asm alw (targetA[0] = targetB[0] - 1 -> targetA[1] != targetB[1]) and
+		(targetA[0] = targetB[0] + 1 -> targetA[1] != targetB[1]) and
+		(targetA[1] = targetB[1] + 1 -> targetA[0] != targetB[0]) and
+		(targetA[1] = targetB[1] - 1 -> targetA[0] != targetB[0]) and
+		(targetA[0] = targetC[0] - 1 -> targetA[1] != targetC[1]) and
+		(targetA[0] = targetC[0] + 1 -> targetA[1] != targetC[1]) and
+		(targetA[1] = targetC[1] + 1 -> targetA[0] != targetC[0]) and
+		(targetA[1] = targetC[1] - 1 -> targetA[0] != targetC[0]) and
+		(targetB[0] = targetC[0] - 1 -> targetB[1] != targetC[1]) and
+		(targetB[0] = targetC[0] + 1 -> targetB[1] != targetC[1]) and
+		(targetB[1] = targetC[1] + 1 -> targetB[0] != targetC[0]) and
+		(targetB[1] = targetC[1] - 1 -> targetB[0] != targetC[0]);
+		
+//engine problems are rare
+asm trig [true]*[engineProblem] |=> [!engineProblem]{15,};
+
+//counter targetARedTurns(0..5) {
+	//initially at 0
+//	targetARedTurns = 0;
+//	inc: targetAIsRed;
+//	reset: atTargetA;
+//}
+//counter targetBRedTurns(0..5) {
+	//initially at 0
+//	targetBRedTurns = 0;
+//	inc: targetBIsRed;
+//	reset: atTargetB;
+//}
+//counter targetCRedTurns(0..5) {
+	//initially at 0
+//	targetCRedTurns = 0;
+//	inc: targetCIsRed;
+//	reset: atTargetC;
+//}
+
+//robot starts green
+gar ini !robotIsYellow;
+
+//when there is an engine problem robot turns yellow
+gar alw engineProblem -> next(robotIsYellow);
+
+//robot stays yellow until reaches start
+gar alw robotIsYellow and !start -> next(robotIsYellow);
+
+//robot changes color to green at start
+gar alw (start and !engineProblem) -> next(!robotIsYellow);
+
+//the robot "wants" to reach start when yellow
+gar alwEv !robotIsYellow;
+
+//robot stays green until engine problem
+gar alw !robotIsYellow and !engineProblem -> !next(robotIsYellow);
+
+//all targets are green at the beginning
+gar ini !targetAIsRed and !targetBIsRed and !targetCIsRed;
+
+//targets change color when visited
+gar alw atTargetA -> next(targetAIsRed);
+gar alw atTargetB -> next(targetBIsRed);
+gar alw atTargetC -> next(targetCIsRed);
+
+//targets change back to green after 3-5 turned since visited
+gar trig [true]*[!targetAIsRed][targetAIsRed] |=>  [targetAIsRed]{3,5}[!targetAIsRed];
+gar trig [true]*[!targetAIsRed][targetAIsRed] |=>  [targetAIsRed]{3,5}[!targetAIsRed];
+gar trig [true]*[!targetAIsRed][targetAIsRed] |=>  [targetAIsRed]{3,5}[!targetAIsRed];
+
+//gar alw P_becomes_true_between_Q_and_R(!targetAIsRed, targetARedTurns = 3, targetARedTurns = 5);
+//gar alw P_becomes_true_between_Q_and_R(!targetBIsRed, targetBRedTurns = 3, targetBRedTurns = 5);
+//gar alw P_becomes_true_between_Q_and_R(!targetCIsRed, targetCRedTurns = 3, targetCRedTurns = 5);
+
+//target stays green until location visit
+gar alw !targetAIsRed and !atTargetA -> next(!targetAIsRed);
+gar alw !targetBIsRed and !atTargetB -> next(!targetBIsRed);
+gar alw !targetCIsRed and !atTargetC -> next(!targetCIsRed);
+
+//targets stays red until allowed to go green
+//gar alw targetAIsRed and targetARedTurns < 3 -> next(targetAIsRed);
+//gar alw targetBIsRed and targetBRedTurns < 3 -> next(targetBIsRed);
+//gar alw targetCIsRed and targetCRedTurns < 3 -> next(targetCIsRed);
+
+//the robot moves one step at a time
+//we allow diagonal moves as well as up/down/left/right
+gar alw (right(robotX) | left(robotX) | stayX(robotX)) and
+		(up(robotY) | down(robotY) | stayY(robotY));
+
+predicate right(DimX cord):
+	next(cord) - cord = 1;
+	
+predicate left(DimX cord):
+	next(cord) - cord = -1;
+	
+predicate stayX(DimX cord):
+	next(cord) = cord;
+
+predicate up(DimY cord):
+	next(cord) - cord = 1;
+	
+predicate down(DimY cord):
+	next(cord) - cord = -1;
+
+predicate stayY(DimY cord):
+	next(cord) = cord;
+
+//robot visits targets fairly
+gar alwEv atTargetA;
+gar alwEv atTargetB;
+gar alwEv atTargetC;
+
+//robot avoids red targets
+gar alw targetAIsRed and !robotIsYellow -> !atTargetA;
+gar alw targetBIsRed and !robotIsYellow -> !atTargetB;
+gar alw targetCIsRed and !robotIsYellow -> !atTargetC;
+
+
+//the robot avoids obstacles
+gar alw !obs1 and !obs2 and !obs3 and !obs4 and !obs5;
+
+//robot starts at top left
+gar ini start;
+
+

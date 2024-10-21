@@ -1,0 +1,132 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Variant3
+
+define DX := 4;
+define DY := 4;
+define upper:=4;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+type Coord = Int(0..upper);
+
+sys DimX robotX;
+sys DimY robotY;
+sys {UP, DOWN, LEFT, RIGHT, UP_RIGHT, UP_LEFT, DOWN_RIGHT, DOWN_LEFT} move;
+
+env Coord[2] tar1;
+env Coord[2] tar2;
+env Coord[2] tar3;
+env boolean engine_problem;
+
+define p1 := robotX=0 & robotY=0;
+define o1 := robotX=1 & robotY=1; 
+define o2 := robotX=2 & robotY=1;
+define o3 := robotX=0 & robotY=3; 
+define o4 := robotX=3 & robotY=3;
+define o5 := robotX=3 & robotY=4; 
+define atTar1 := robotX = tar1[0] & robotY = tar1[1];
+define atTar2 := robotX = tar2[0] & robotY = tar2[1];
+define atTar3 := robotX = tar3[0] & robotY = tar3[1];
+//define atTar1 := robotX = 1 & robotY = 0;
+//define atTar2 := robotX = 2 & robotY = 0;
+//define atTar3 := robotX = 4 & robotY = 3;
+
+sys boolean tar1red;
+sys boolean tar2red;
+sys boolean tar3red;
+
+gar ini tar1red = false;
+gar ini tar2red = false;
+gar ini tar3red = false;
+
+// Target locations are not on obstacles, on (0,0) or on (4,4)
+asm alw legalTarget(tar1[0],tar1[1]);
+asm alw legalTarget(tar2[0],tar2[1]);
+asm alw legalTarget(tar3[0],tar3[1]);
+
+predicate legalTarget(Coord tarX, Coord tarY):
+(!(tarX = 0 & tarY = 0)) &
+(!(tarX = 1 & tarY = 1)) &
+(!(tarX = 2 & tarY = 1)) &
+(!(tarX = 0 & tarY = 3)) &
+(!(tarX = 3 & tarY = 3)) &
+(!(tarX = 3 & tarY = 4)) &
+(!(tarX = 4 & tarY = 4));
+
+// All three targets are different
+asm alw !(tar1[0]=tar2[0] & tar1[1]=tar2[1]);
+asm alw !(tar1[0]=tar3[0] & tar1[1]=tar3[1]);
+asm alw !(tar2[0]=tar3[0] & tar2[1]=tar3[1]);
+
+// Target locations are fixed throughout the whole run
+asm alw tar1[0]=next(tar1[0]) & tar1[1]=next(tar1[1]);
+asm alw tar2[0]=next(tar2[0]) & tar2[1]=next(tar2[1]);
+asm alw tar3[0]=next(tar3[0]) & tar3[1]=next(tar3[1]);
+
+
+// When an engine problem occurs, the robot goes back to (0,0)
+// and another one will not happen for at least 15 states.
+asm trig [true][engine_problem] |=> [true][p1];
+
+// The robot's start position is (0,0)
+gar ini p1;
+
+// Defining the possible moves
+gar alw move=UP implies minusOneY(robotY) & fixX(robotX);
+gar alw move=DOWN implies plusOneY(robotY) & fixX(robotX);
+gar alw move=LEFT implies minusOneX(robotX) & fixY(robotY);
+gar alw move=RIGHT implies plusOneX(robotX) & fixY(robotY);
+gar alw move=UP_RIGHT implies UP_RIGHT(robotX, robotY);
+gar alw move=DOWN_LEFT implies DOWN_LEFT(robotX, robotY);
+gar alw move=UP_LEFT implies UP_LEFT(robotX, robotY);
+gar alw move=DOWN_RIGHT implies DOWN_RIGHT(robotX, robotY);
+
+predicate plusOneX (DimX c):
+c + 1 = next (c) | (c = upper & next(c)=c);
+predicate plusOneY (DimY c):
+c + 1 = next (c) | (c = upper & next(c)=c);
+predicate minusOneX (DimX c):
+c -1 = next (c) | (c = 0 & next(c)=c);
+predicate minusOneY (DimY c):
+c -1 = next (c) | (c = 0 & next(c)=c);
+predicate fixX (DimX c):
+next(c)=c;
+predicate fixY (DimY c):
+next(c)=c;
+predicate UP_RIGHT (DimX x, DimY y):
+((x + 1 = next (x)) & (y - 1 = next (y))) | ((x = upper | y = 0) & (next(x)=x) & next(y)=y);
+predicate DOWN_LEFT (DimX x, DimY y):
+((x - 1 = next (x)) & (y + 1 = next (y))) | ((x = 0 | y = upper) & (next(x)=x) & next(y)=y);
+predicate UP_LEFT (DimX x, DimY y):
+((x - 1 = next (x)) & (y - 1 = next (y))) | ((x = 0 | y = 0) & (next(x)=x) & next(y)=y);
+predicate DOWN_RIGHT (DimX x, DimY y):
+((x + 1 = next (x)) & (y + 1 = next (y))) | ((x = upper | y = upper) & (next(x)=x) & next(y)=y);
+
+// The robot's location is not on obstacles
+gar alw !o1;
+gar alw !o2;
+gar alw !o3;
+gar alw !o4;
+gar alw !o5;
+
+// If a target is not red, it continues to be not red until the robot visits it
+gar P_is_false_after_Q_until_R(tar1red, !tar1red, atTar1);
+gar P_is_false_after_Q_until_R(tar2red, !tar2red, atTar2);
+gar P_is_false_after_Q_until_R(tar3red, !tar3red, atTar3);
+
+// When the robot visits a location, the location’s color is changed to red for between 3 to 5 turns.
+// After that, the location’s color is changed back to green.
+gar trig [true]*[atTar1] |=> [tar1red = true]{3,5}[tar1red = false];
+gar trig [true]*[atTar2] |=> [tar2red = true]{3,5}[tar2red = false];	
+gar trig [true]*[atTar3] |=> [tar3red = true]{3,5}[tar3red = false];
+
+// The robot cannot visit a location while it is red
+gar P_is_false_after_Q_until_R(atTar1, atTar1, !tar1red);
+gar P_is_false_after_Q_until_R(atTar2, atTar2, !tar2red);
+gar P_is_false_after_Q_until_R(atTar3, atTar3, !tar3red);
+
+// The robot visits all the target locations again and again	
+gar alwEv atTar1;
+gar alwEv atTar2;
+gar alwEv atTar3;

@@ -1,0 +1,17 @@
+NAME:baseline
+FOLDER_PATH: ./data_example
+OUT_PATH: ./OUT
+RUNS_PER_CONFIG:1
+#The Incremental Configuration
+
+CONFIG_1
+baseline
+ACTION_TYPE:REALIZABILITY
+MEMORYLESS: true
+*
+CONFIG_2
+static_ordering
+ACTION_TYPE:REALIZABILITY
+MEMORYLESS: true
+STATIC_ORDER:REVERSE_CUTHILL
+*

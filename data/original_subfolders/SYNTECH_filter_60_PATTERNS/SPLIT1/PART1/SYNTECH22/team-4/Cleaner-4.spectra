@@ -1,0 +1,333 @@
+import "imports/DwyerPatternsNamed.spectra"
+spec Cleaner
+
+
+// #############################################
+// ***   		     TYPES       			 ***
+// *********************************************
+
+define DX := 7;
+define DY := 7;
+
+type Colors = Int(0..2);
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+
+// #############################################
+// ***   		      VARs      			 ***
+// *********************************************
+
+sys DimX robot_X;
+sys DimY robot_Y;
+
+//sys boolean target_is_clean;
+//sys boolean robot_cannot_move;
+sys boolean first_8_states;
+sys boolean robot_tank_is_full;
+sys boolean waiting_for_green_light;
+sys boolean robot_should_rotate;
+
+sys {BLUE, YELLOW, RED, GREEN, GREY} robot_color;
+
+env DimX target_X;
+env DimY target_Y;
+
+env boolean green_light;
+env boolean target_is_relevant;
+env boolean robot_tank_was_emptied;
+
+
+// #############################################
+// ***   	       AUX OBJECTS  			 ***
+// *********************************************
+
+// A stays in board limits -> between 0 and 8 for x and y
+predicate A_stays_in_board(DimX Xpos, DimY Ypos):
+	(Xpos >= 0) & (Xpos <= DX) & (Ypos >= 0) & (Ypos <= DY);
+
+// predicate: check 2 core objects share the same location
+predicate A_at_cell_B(DimX Xpos1, DimY Ypos1, DimX Xpos2, DimY Ypos2):
+	((Xpos1 = Xpos2) & (Ypos1 = Ypos2));
+
+// A doesn't move for 1 state
+predicate A_is_fixed(DimX Xpos, DimY Ypos):
+	 (next(Xpos) = Xpos & next(Ypos) = Ypos);
+
+// A avoids the obstacles
+predicate A_avoids_obstacles(DimX Xpos, DimY Ypos):
+	!A_at_cell_B(Xpos, Ypos, 1, 1) &
+	!A_at_cell_B(Xpos, Ypos, 2, 1) &
+	!A_at_cell_B(Xpos, Ypos, 3, 1) &
+	!A_at_cell_B(Xpos, Ypos, 4, 1) &
+	!A_at_cell_B(Xpos, Ypos, 5, 1) &
+	!A_at_cell_B(Xpos, Ypos, 1, 4) &	
+	!A_at_cell_B(Xpos, Ypos, 2, 4) &
+	!A_at_cell_B(Xpos, Ypos, 3, 4) &	
+	!A_at_cell_B(Xpos, Ypos, 4, 4) &	
+	!A_at_cell_B(Xpos, Ypos, 5, 4) &
+	!A_at_cell_B(Xpos, Ypos, 1, 7) &
+	!A_at_cell_B(Xpos, Ypos, 4, 7)
+	;
+
+// A is in the orange zone
+predicate A_at_orange_zone(DimX Xpos, DimY Ypos):
+	A_at_cell_B(Xpos, Ypos, 1, 0) | A_at_cell_B(Xpos, Ypos, 2, 0) | A_at_cell_B(Xpos, Ypos, 3, 0) |
+	A_at_cell_B(Xpos, Ypos, 4, 0) | A_at_cell_B(Xpos, Ypos, 5, 0) | 
+	A_at_cell_B(Xpos, Ypos, 1, 2) |	A_at_cell_B(Xpos, Ypos, 2, 2) | A_at_cell_B(Xpos, Ypos, 3, 2) | 
+	A_at_cell_B(Xpos, Ypos, 4, 2) |	A_at_cell_B(Xpos, Ypos, 5, 2) | 
+	A_at_cell_B(Xpos, Ypos, 1, 3) | A_at_cell_B(Xpos, Ypos, 2, 3) | A_at_cell_B(Xpos, Ypos, 3, 3) | 
+	A_at_cell_B(Xpos, Ypos, 4, 3) | A_at_cell_B(Xpos, Ypos, 5, 3) |
+	A_at_cell_B(Xpos, Ypos, 1, 5) | A_at_cell_B(Xpos, Ypos, 2, 5) | A_at_cell_B(Xpos, Ypos, 3, 5) |	
+	A_at_cell_B(Xpos, Ypos, 4, 5) | A_at_cell_B(Xpos, Ypos, 5, 5) | 
+	A_at_cell_B(Xpos, Ypos, 1, 6) |	A_at_cell_B(Xpos, Ypos, 2, 6) | A_at_cell_B(Xpos, Ypos, 3, 6) | 
+	A_at_cell_B(Xpos, Ypos, 4, 6) | A_at_cell_B(Xpos, Ypos, 5, 6);
+
+
+// #############################################
+// ***      General Task Requirements        ***
+// *********************************************
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~ ASSUMPTIONS ~~~~~~~
+
+// target does not coincide with start, obstacles, and stays in board
+asm targetBehaves:
+	alw 
+		!A_at_cell_B(target_X, target_Y, 0, 0) &
+		A_avoids_obstacles(target_X, target_Y) &
+		A_stays_in_board(target_X, target_Y);
+
+// assume env flip green_light randomly indefinitely
+asm alwEv green_light;
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~ ROBOT GARS ~~~~~~~
+
+define robot_at_start := A_at_cell_B(robot_X, robot_Y, 0, 0);	
+define robot_at_target := A_at_cell_B(robot_X, robot_Y, target_X, target_Y);
+define robot_at_orange_zone := A_at_orange_zone(robot_X, robot_Y);
+define robot_not_at_orange_zone := !A_at_orange_zone(robot_X, robot_Y);
+define 
+	robot_stays := A_is_fixed(robot_X, robot_Y);
+	robot_moves_up := (next(robot_X) = robot_X) & (next(robot_Y) = robot_Y + 1);
+	robot_moves_down := (next(robot_X) = robot_X) & (next(robot_Y) = robot_Y - 1);
+	robot_moves_right := (next(robot_X) = robot_X + 1) & (next(robot_Y) = robot_Y);
+	robot_moves_left := (next(robot_X) = robot_X - 1) & (next(robot_Y) = robot_Y);
+
+// all available moves for the robot 
+define robot_moves := robot_stays | robot_moves_up | robot_moves_down | robot_moves_right | robot_moves_left;
+
+// spectra guarantees robot initial position is top-left cell
+gar ini robot_at_start;
+
+// spectra guarantees robot always moves, does not step on obstacles, & stays on board
+gar	robotBehaves: 
+	alw 
+		robot_moves &
+		A_avoids_obstacles(robot_X, robot_Y) &
+		A_stays_in_board(robot_X, robot_Y);
+
+// spectra guarantees robot color is only of the 5 available
+gar alw (robot_color = BLUE) | (robot_color = RED) | (robot_color = YELLOW) | (robot_color = GREEN) | (robot_color = GREY);
+
+// telling simulator, robot's default color is blue;
+//define robot_color_should_be_blue :=  
+//		!(waiting_for_green_light | robot_tank_is_full | robot_is_cleaning | robot_is_sleeping | first_8_states);
+
+//gar alw robot_color_should_be_blue -> (robot_color = BLUE); 
+
+
+// #############################################
+// ***              Property #1              ***
+// *********************************************
+
+// telling simulator that robot should rotate while in orange zone
+gar alw robot_should_rotate <-> robot_at_orange_zone;
+
+// #############################################
+// ***              Property #2              ***
+// *********************************************
+
+///* 
+
+define robot_moving_in_orange_zone := robot_at_orange_zone & !robot_is_cleaning;
+
+// initially set to 0
+// increment while robot is in the orange zone (but not if it's not moving because its cleaning) 
+// reset if robot gets out of orange zone, or starts cleaning (target is in orange zone)
+counter in_orange_zone_counter(0..6) {
+	in_orange_zone_counter = 0;
+	inc: robot_moving_in_orange_zone & !waiting_for_green_light;
+	reset: !robot_moving_in_orange_zone;
+	overflow: modulo;
+}
+
+define 
+	in_orange_zone_for_5_states := (in_orange_zone_counter = 4);
+	in_orange_zone_for_7_states := (in_orange_zone_counter = 6);
+
+// if robot is in orange zone for 5 states, it cannot move until it has waited 2 states.
+gar P_is_true_After_Q_until_R(robot_stays, in_orange_zone_for_5_states, PREV(in_orange_zone_for_7_states));
+
+// after waiting 2 turns, robot cannot move until it gets green light to move.
+//gar P_is_true_After_Q_until_R(robot_stays & waiting_for_green_light & (robot_color = RED), PREV(in_orange_zone_for_7_states), green_light);
+gar P_is_true_After_Q_until_R(robot_stays & waiting_for_green_light, PREV(in_orange_zone_for_7_states), green_light);
+
+// in orange zone counter should not increase while robot waits for green light
+// here, we dictate exactly when robot waits for green light 
+// (robot also waits for green light in P6, but we implemented P6 independently, so we ommit it from this sys var)
+gar P_is_true_After_Q_until_R(!waiting_for_green_light, green_light, PREV(in_orange_zone_for_7_states));
+
+// telling simulator to change robot's color to red while waiting for green_light
+//gar alw waiting_for_green_light -> (robot_color = RED);
+
+//*/
+
+// #############################################
+// ***              Property #3              ***
+// *********************************************
+
+///* 
+
+define robot_is_cleaning := robot_at_target & target_is_relevant & !robot_tank_is_full;
+
+// initially set to 0
+// increment when stay in place
+// reset when target is cleaned
+counter cleaning_target_counter(0..5) {
+	cleaning_target_counter = 0;
+	inc: robot_is_cleaning;
+	overflow: modulo;
+}
+
+define robot_finished_cleaning := (cleaning_target_counter = 5);
+
+// if target appears [env signals target is relevant], robot will go to it
+gar alwEv target_is_relevant -> robot_at_target;
+
+// whenever in target, robot stays to clean for at least 5 states
+// also, telling simulator to change robot's color to green while its cleaning
+gar alw robot_is_cleaning -> robot_stays & (robot_color = GREEN);
+
+// assume game starts with a target to clean..
+asm ini target_is_relevant;
+
+// a new target to clean will always eventually appear
+asm alwEv target_is_relevant;  
+
+// target does not change place until robot has cleaned it
+asm targetsMovesOnlyAfterRobotCleanedThem:
+	alw (target_is_relevant & !robot_finished_cleaning) -> A_is_fixed(target_X, target_Y) & next(target_is_relevant);
+
+// telling simulator to change robot's color to green while its cleaning
+//gar alw robot_is_cleaning -> (robot_color = GREEN);
+
+//*/
+
+// #############################################
+// ***              Property #4              ***
+// *********************************************
+
+///*
+
+// initially set to 0
+// increment when another target was cleaned
+// reset when robot tank we emptied
+counter cleaning_tank_counter(0..5) {
+	cleaning_tank_counter = 0;
+	inc: robot_finished_cleaning;
+	reset: robot_tank_was_emptied; //changed from: reset: robot_at_start_for_emptying
+}
+
+define 
+	cleaned_5_targets := (cleaning_tank_counter = 5);
+	robot_at_start_for_emptying := robot_tank_is_full & robot_at_start;
+	tank_emptied_2_states_ago := PREV(PREV(robot_tank_was_emptied));
+
+// if robot is at start with a full tank, eventually enve says its tank was emptied
+asm alwEv robot_at_start_for_emptying -> robot_tank_was_emptied;
+
+// env doesn't say robots tank was emptied when its not full / robot is not at start 
+asm alw !robot_at_start_for_emptying -> next(!robot_tank_was_emptied);
+
+// here, we dictate exactly when robot's tank is empty, & when its full
+gar alw robot_tank_is_full <-> cleaned_5_targets;
+
+// if robot's tank is full, it makes way to start
+gar alwEv robot_tank_is_full -> robot_at_start;
+
+// robot stays at start until env says its tank was emptied
+gar P_is_true_After_Q_until_R(robot_stays, robot_at_start_for_emptying, tank_emptied_2_states_ago);
+
+// telling simulator to change robot's color to yellow while tank is full
+gar alw robot_tank_is_full -> waiting_for_green_light | robot_color = YELLOW;
+
+//*/
+
+// #############################################
+// ***              Property #5              ***
+// *********************************************
+
+// initially set to 0
+// increment when stay in place
+// reset once a target appears
+// overflow: freeze counter on 8
+counter no_new_target_counter(0..8) {	
+	no_new_target_counter = 0;
+	inc: !target_is_relevant;
+	reset: target_is_relevant;
+	overflow: keep;
+}
+
+define
+	no_new_target_for_8_states := (no_new_target_counter = 8);
+	robot_is_sleeping := no_new_target_for_8_states & robot_not_at_orange_zone;
+	new_target_2_states_ago := PREV(PREV(target_is_relevant));
+	
+// robot doesnt move after no new target for 8 states, until 2 states after a new target appears 
+gar P_is_true_After_Q_until_R(robot_stays & (robot_color = GREY), robot_is_sleeping, new_target_2_states_ago);
+
+// robot needs to make way out of orange zone after no new target for 8 states, 
+// unless a new target appears, and then you can disregard getting out.
+gar trig [true]*[robot_at_orange_zone & no_new_target_for_8_states] |=> [true]*[target_is_relevant | robot_not_at_orange_zone]; 
+
+// telling simulator to change robot's color to grey while sleeping
+//gar alw robot_is_sleeping -> (robot_color = GREY);
+
+// #############################################
+// ***              Property #6              ***
+// *********************************************
+
+///*
+
+// initially set to 0
+// increment when stay in place
+// after 8 first states, counter is fixed on value 8
+counter first_8_states_counter(0..8) {
+	first_8_states_counter = 0;
+	inc: first_8_states;
+	overflow: keep;
+}
+
+define first_8_states_completed := (first_8_states_counter = 8);
+define eighth_state := PREV(!first_8_states_completed) & first_8_states_completed;
+
+// sys var first_8_states is initially true
+gar ini first_8_states;
+
+// sys var 'first_8_states' becomes false iff first 8 states have passed
+gar alw ONCE(first_8_states_completed) <-> !first_8_states;
+
+// until 8 states have passed robot stays at start
+// also, tell simulator to change robot's color to red during this time
+gar P_is_true_before_R(robot_stays & (robot_color = RED), !first_8_states);
+//gar P_is_true_before_R(robot_stays, !first_8_states);
+
+// after the 8th state has passed, until green_light is given, robot stays at start
+// also, tell simulator to change robot's color to red during this time
+gar P_is_true_After_Q_until_R(robot_stays & (robot_color = RED), eighth_state, green_light);
+//gar P_is_true_After_Q_until_R(robot_stays, eighth_state, green_light);
+
+//*/

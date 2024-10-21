@@ -1,0 +1,192 @@
+import "imports/DwyerPatternsNamed.spectra"
+spec Robot
+
+//~~~~~~~~~~~ TYPES ~~~~~~~~~~~~~~
+
+define DX := 4;
+define DY := 4;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+
+//~~~~~~~~ CORE OBJECTS ~~~~~~~~~~
+
+sys DimX robotX;	// X position of the robot from 0 to 4
+sys DimY robotY;	// Y position of the robot from 0 to 4
+
+env DimX targetA_X;
+env DimY targetA_Y;
+env DimX targetB_X;
+env DimY targetB_Y;
+env DimX targetC_X;
+env DimY targetC_Y;
+
+env boolean robot_engine_problem;
+
+
+// noted locations: start point and target points
+define
+	atStart := (robotX = 0) & (robotY = 0);
+	atTargetA := (robotX = targetA_X) & (robotY = targetA_Y);
+	atTargetB := (robotX = targetB_X) & (robotY = targetB_Y);
+	atTargetC := (robotX = targetC_X) & (robotY = targetC_Y);
+	
+	
+//~~~~~~~~~ PREDICATES ~~~~~~~~~~
+
+// moving x coordinate predicate
+predicate moveDistX(DimX Xpos):
+	(next(Xpos) = Xpos) | (next(Xpos) = Xpos +1) | (next(Xpos) = Xpos -1); 
+
+// moving y coordinate predicate
+predicate moveDistY(DimY Ypos):
+	(next(Ypos) = Ypos) | (next(Ypos) = Ypos +1) | (next(Ypos) = Ypos -1); 
+
+// facilitate robot moves predicate
+predicate robotMoves(DimX Xpos, DimY Ypos):
+ 	moveDistX(Xpos) & moveDistY(Ypos);
+
+// check 2 core objects share the same location
+predicate intersecting(DimX Xpos1, DimY Ypos1, DimX Xpos2, DimY Ypos2):
+	((Xpos1 = Xpos2) & (Ypos1 = Ypos2));
+
+// avoid hard-coded obstacles
+predicate avoidsObstacles(DimX Xpos, DimY Ypos):
+	!intersecting(Xpos, Ypos, 0, 3) &
+	!intersecting(Xpos, Ypos, 1, 1) &
+	!intersecting(Xpos, Ypos, 2, 1) &
+	!intersecting(Xpos, Ypos, 3, 3) &
+	!intersecting(Xpos, Ypos, 3, 4)
+	;
+
+// stay in board limits -> between 0 and 8 for x and y
+predicate robotStaysInBoardLimits(DimX Xpos, DimY Ypos):
+	(Xpos >= 0) & (Xpos <= DX) & (Ypos >= 0) & (Ypos <= DY);
+
+// fix location of core object
+predicate isFixed(DimX Xpos, DimY Ypos):
+	(next(Xpos) = Xpos) & (next(Ypos) = Ypos);
+	
+// given a cell in the board, check if all targets do not occupy it 
+predicate targetsAvoidCell(DimX Xpos, DimY Ypos):
+	!intersecting(targetA_X, targetA_Y, Xpos, Ypos) &
+	!intersecting(targetB_X, targetB_Y, Xpos, Ypos) &
+	!intersecting(targetC_X, targetC_Y, Xpos, Ypos);
+
+
+//~~~~~~~~~ ASSUMPTIONS ~~~~~~~~~~
+
+// spectra assumes targets are not moving
+asm targetsAreFixed:
+	alw isFixed(targetA_X, targetA_Y) &
+		isFixed(targetB_X, targetB_Y) &
+		isFixed(targetC_X, targetC_Y);
+
+// spectra assumes targets do not share location with obstacles
+asm targetsDoNotIntersectObstacles:
+	alw avoidsObstacles(targetA_X, targetA_Y) &
+		avoidsObstacles(targetB_X, targetB_Y) &
+		avoidsObstacles(targetC_X, targetC_Y);
+
+// spectra assumes targets do not share location with each other
+asm targetsDoNotIntersectEachOther:
+	alw !intersecting(targetA_X, targetA_Y, targetB_X, targetB_Y) &
+		!intersecting(targetA_X, targetA_Y, targetC_X, targetC_Y) &
+		!intersecting(targetB_X, targetB_Y, targetC_X, targetC_Y);
+
+// spectra assumes targets are not positioned on starting location 
+asm targetsDoNotIntersectStart:
+	alw targetsAvoidCell(0, 0);
+
+// temporary fix for blocking scenarios for not stepping on red targets (nowhere to go)
+asm targetsDoNotFormBlockingScenariosForSteppingOnRedTargets:
+	alw (!targetsAvoidCell(4, 4) -> targetsAvoidCell(4, 3)) &
+		(!targetsAvoidCell(4, 3) -> targetsAvoidCell(4, 4)) &
+		(
+			!targetsAvoidCell(0, 4) 
+			-> 
+			(targetsAvoidCell(1, 4) | targetsAvoidCell(1, 3))
+		) &
+		(
+			!targetsAvoidCell(1, 4) 
+			-> 
+			(targetsAvoidCell(0, 4) | targetsAvoidCell(1, 3))
+		) &
+		(
+			!targetsAvoidCell(1, 3) 
+			-> 
+			(targetsAvoidCell(0, 4) | targetsAvoidCell(1, 4))
+		);
+
+
+// spectra assumes robot starts without an engine problem
+asm ini robot_engine_problem = false;
+
+// spectra assumes robot will get engine problems forever
+asm alwEv robot_engine_problem = true;
+
+// spectra assumes robot engine problem does not disappear on its own
+asm alw robot_engine_problem & !atStart -> next(robot_engine_problem);
+
+// spectra assumes after engine fix, it has (at least) 15 states without a new engine problem 
+asm trig [true]*[robot_engine_problem & atStart] |=> (~[robot_engine_problem]){15,};
+
+
+//~~~~~~~~~ GUARANTEES ~~~~~~~~~~~
+
+// spectra guarantees robot initial position is top-left cell
+gar ini atStart;
+
+// spectra guarantees robot always moves, does not step on obstacles, & stays on board
+gar	robotBehaves: 
+	alw robotMoves(robotX, robotY) & 
+		avoidsObstacles(robotX, robotY) &
+		robotStaysInBoardLimits(robotX, robotY);
+
+// spectra guarantees robot doesn't step on a red target, unless it has an engine problem (and then it can)
+gar trig [true]*[atTargetA] |=> [!robot_engine_problem -> !atTargetA]{3};
+gar trig [true]*[atTargetB] |=> [!robot_engine_problem -> !atTargetB]{3};
+gar trig [true]*[atTargetC] |=> [!robot_engine_problem -> !atTargetC]{3};
+
+
+// spectra guarantees all targets are eventually visited
+gar alwEv atTargetA;
+gar alwEv atTargetB;
+gar alwEv atTargetC;
+
+//~~~~ Trying to make robot return fast to start ~~~~~~
+// if we change it to [true]{0, 9}[atStart], spec becomes unrealizable 
+gar trig [true]*[robot_engine_problem] |=> [true]{0, 10}[atStart];
+
+
+/*
+// check if given cell is the robot's position
+predicate robotPositionIs(DimX Xpos, DimY Ypos):
+	((Xpos = robotX) & (Ypos = robotY));
+
+// mapped distance for each cell on board
+define 
+	robotNeeds7StatesToReturn := robotPositionIs(4, 4);
+	robotNeeds6StatesToReturn := robotPositionIs(4, 3);
+	robotNeeds5StatesToReturn := robotPositionIs(0, 4) | robotPositionIs(1, 4) | robotPositionIs(2, 4) | robotPositionIs(3, 2) | 
+								 robotPositionIs(4, 2) | robotPositionIs(4, 1) | robotPositionIs(4, 0);  
+	robotNeeds4StatesToReturn := robotPositionIs(1, 3) | robotPositionIs(2, 3) | robotPositionIs(2, 2) | 
+								 robotPositionIs(3, 1) | robotPositionIs(3, 0);
+	robotNeeds3StatesToReturn := robotPositionIs(0, 2) | robotPositionIs(1, 2) | robotPositionIs(2, 0);
+	robotNeeds2StatesToReturn := robotPositionIs(0, 1) | robotPositionIs(1, 0);
+	robotNeeds1StatesToReturn := robotPositionIs(0, 0);
+
+
+// spectra guarantees the robot does not stall too much when he needs to go back to start
+gar trig [true]*[robot_engine_problem & robotNeeds7StatesToReturn] |=> [true]{0, 7}[atStart];
+gar trig [true]*[robot_engine_problem & robotNeeds6StatesToReturn] |=> [true]{0, 6}[atStart];
+gar trig [true]*[robot_engine_problem & robotNeeds5StatesToReturn] |=> [true]{0, 5}[atStart];
+gar trig [true]*[robot_engine_problem & robotNeeds4StatesToReturn] |=> [true]{0, 4}[atStart];
+gar trig [true]*[robot_engine_problem & robotNeeds3StatesToReturn] |=> [true]{0, 3}[atStart];
+gar trig [true]*[robot_engine_problem & robotNeeds2StatesToReturn] |=> [true]{0, 2}[atStart];
+gar trig [true]*[robot_engine_problem & robotNeeds1StatesToReturn] |=> [true]{0, 1}[atStart];
+*/
+
+
+

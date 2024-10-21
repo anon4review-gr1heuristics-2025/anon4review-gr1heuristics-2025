@@ -1,0 +1,109 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Robot
+
+define DX := 4;
+define DY := 4;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+sys DimX robotX;
+sys DimY robotY;
+
+//sys boolean[3] targetsGreen;
+sys boolean AisGreen;
+sys boolean BisGreen;
+sys boolean CisGreen;
+
+env boolean engineProblem;
+
+// Targets
+env DimX[3] targetsX;
+env DimY[3] targetsY;
+
+// Obstacles
+//env DimX[5] obstaclesX;
+//env DimY[5] obstaclesY;
+
+// Targets won't move during the whole run	 
+asm alw forall i in Int(0..2). targetsX[i] = next(targetsX[i]);
+asm alw forall i in Int(0..2). targetsY[i] = next(targetsY[i]);
+
+
+// Targets won't be placed at (0,0)
+asm forall i in Int(0..2). targetsX[i]!=0 | targetsY[i]!=0;
+
+
+// Targets won't be placed at the obstacles' cells 
+predicate excludeObstacleCellsFromTargets(DimX tarX, DimY tarY):
+	(tarX = 1 -> tarY != 1) & (tarX = 0 -> tarY != 3) & (tarX = 2 -> tarY != 1)
+	 & (tarX = 3 -> ((tarY != 3) & (tarY != 4)));
+	 
+asm alw forall i in Int(0..2). excludeObstacleCellsFromTargets(targetsX[i], targetsY[i]);
+
+// Targets won't be placed together at the same cell
+asm alw (targetsX[0] = targetsX[1]) -> (targetsY[0] != targetsY[1]);
+asm alw (targetsX[0] = targetsX[2]) -> (targetsY[0] != targetsY[2]);
+asm alw (targetsX[1] = targetsX[2]) -> (targetsY[1] != targetsY[2]);
+ 
+
+define
+  inA := robotX = targetsX[0] & robotY = targetsY[0];    
+  inB := robotX = targetsX[1] & robotY = targetsY[1]; 
+  inC := robotX = targetsX[2] & robotY = targetsY[2]; 
+  zeroState:= robotX = 0 & robotY = 0; 
+
+  
+//Robot steps
+gar alw robotX + 1 = next(robotX) | robotX - 1 = next(robotX) | robotX = next(robotX);
+gar alw robotY + 1 = next(robotY) | robotY - 1 = next(robotY) | robotY = next(robotY);
+	
+//Avoiding obstacles 	
+gar alw (robotX = 1 -> robotY != 1); 
+gar alw (robotX = 0 -> robotY != 3);
+gar alw (robotX = 2 -> robotY != 1);
+gar alw (robotX = 3 -> (robotY != 3) & (robotY != 4));
+
+//Initial state - (0,0) is red
+gar ini zeroState & AisGreen & BisGreen & CisGreen;
+asm ini !engineProblem;
+
+// Visit all the locations fairly, again and again
+gar alwEv inA;
+gar alwEv inB;
+gar alwEv inC;
+
+// Robot should arrive at (0,0) once a engine problem occurs 
+gar zeroStateAfterAProblemOccurs:
+	S_responds_to_P_globally(zeroState, engineProblem);
+
+
+// Counter of 15 stages in which a problem cannot occur 
+asm trig [true]*[zeroState] |=> [!engineProblem]{15,}[engineProblem];
+
+//Targets' color changes back to green after 3-5 stages
+
+//gar forall i in Int(0..2). trig [true]*[(robotX = targetsX[i] & robotY = targetsY[i])] |=> [!targetsGreen[i]]{3,5}[targetsGreen[i]];
+gar trig [true]*[inA] |=> [!AisGreen]{3,5}[AisGreen];
+
+gar trig [true]*[inB] |=> [!BisGreen]{3,5}[BisGreen];
+
+gar trig [true]*[inC] |=> [!CisGreen]{3,5}[CisGreen];
+
+// Targets' color does not change to red unless target is visited
+gar alw (AisGreen & !inA) -> AisGreen = next(AisGreen);
+gar alw (BisGreen & !inB) -> BisGreen = next(BisGreen);
+gar alw (CisGreen & !inC) -> CisGreen = next(CisGreen);
+
+
+// While targets are red robot cannot visit them			
+gar alw !AisGreen -> !inA;
+gar alw !BisGreen -> !inB;
+gar alw !CisGreen -> !inC;
+
+		  					
+  					
+ 
+
+

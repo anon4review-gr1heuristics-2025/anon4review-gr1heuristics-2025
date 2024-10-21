@@ -1,0 +1,84 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Robot
+
+define DX := 4;
+define DY := 4;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+sys DimX robotX;
+sys DimY robotY;
+
+// Targets
+env DimX[3] targetsX;
+env DimY[3] targetsY;
+
+// Obstacles
+//env DimX[5] obstaclesX;
+//env DimY[5] obstaclesY;
+
+// Targets won't move during the whole run	 
+asm alw forall i in Int(0..2). targetsX[i] = next(targetsX[i]);
+asm alw forall i in Int(0..2). targetsY[i] = next(targetsY[i]);
+
+
+// Targets won't be placed at (0,0)
+asm forall i in Int(0..2). targetsX[i]!=0 | targetsY[i]!=0;
+asm forall i in Int(0..2). targetsX[i]!=4 | targetsY[i]!=4;
+
+
+// Targets won't be placed at the obstacles' cells 
+predicate excludeObstacleCellsFromTargets(DimX tarX, DimY tarY):
+	(tarX = 1 -> tarY != 1) & (tarX = 0 -> tarY != 3) & (tarX = 2 -> tarY != 1)
+	 & (tarX = 3 -> ((tarY != 3) & (tarY != 4)));
+	 
+asm alw forall i in Int(0..2). excludeObstacleCellsFromTargets(targetsX[i], targetsY[i]);
+
+// Targets won't be placed together at the same cell
+asm alw (targetsX[0] = targetsX[1]) -> (targetsY[0] != targetsY[1]);
+asm alw (targetsX[0] = targetsX[2]) -> (targetsY[0] != targetsY[2]);
+asm alw (targetsX[1] = targetsX[2]) -> (targetsY[1] != targetsY[2]);
+ 
+
+define
+  inA := robotX = targetsX[0] & robotY = targetsY[0];    
+  inB := robotX = targetsX[1] & robotY = targetsY[1]; 
+  inC := robotX = targetsX[2] & robotY = targetsY[2]; 
+  zeroState:= robotX = 0 & robotY = 0;
+  
+//Robot steps
+gar alw robotX + 1 = next(robotX) | robotX - 1 = next(robotX) | robotX = next(robotX);
+gar alw robotY + 1 = next(robotY) | robotY - 1 = next(robotY) | robotY = next(robotY);
+	
+//Avoiding obstacles 	
+gar alw (robotX = 1 -> robotY != 1); 
+gar alw (robotX = 0 -> robotY != 3);
+gar alw (robotX = 2 -> robotY != 1);
+gar alw (robotX = 3 -> (robotY != 3) & (robotY != 4));
+
+//Initial state - (0,0) is red
+gar ini zeroState;
+
+// Visit all the locations fairly, again and again
+gar alwEv inA;
+gar alwEv inB;
+gar alwEv inC;
+
+//Enforcing the order of A > B > C
+gar inBafterinABeforeinC:
+	P_becomes_true_between_Q_and_R(inB, inA, inC);
+	
+gar inAafterinCBeforeinB:
+	P_becomes_true_between_Q_and_R(inA, inC, inB);
+	
+
+		
+
+
+  					
+  					
+ 
+
+

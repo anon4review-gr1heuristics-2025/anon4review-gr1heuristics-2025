@@ -1,0 +1,70 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Variant1
+
+//define NumObstacles := 14;
+define DX := 4;
+define DY := 4;
+define inStart := robotX = 0 & robotY = 0;
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+sys DimX robotX;
+sys DimY robotY;
+
+// 3 targets - each has x and y value
+env DimX target1X;
+env DimY target1Y;
+env DimX target2X;
+env DimY target2Y;
+env DimX target3X;
+env DimY target3Y;
+
+define inLocation1 := robotX = target1X & robotY = target1Y;
+define inLocation2 := robotX = target2X & robotY = target2Y;
+define inLocation3 := robotX = target3X & robotY = target3Y;
+
+// predicate dealing with fixing the location of targets
+predicate FixTargetLocation(DimX targetX, DimY targetY):
+ next(targetX) = targetX & next(targetY) = targetY;
+
+// locations of obstacles by places on the grid
+asm alw FixTargetLocation(target1X, target1Y) & FixTargetLocation(target2X, target2Y) & FixTargetLocation(target3X, target3Y);
+
+//predicate to avoid all obstacles
+predicate NotOnObsticles(DimX x, DimY y):
+ (!(x = 0 & y = 3)) & (!(x = 1 & y = 1)) & (!(x = 2 & y = 1)) & (!(x = 3 & y = 3)) & (!(x = 3 & y = 4));
+
+asm alw NotOnObsticles(target1X, target1Y);
+asm alw NotOnObsticles(target2X, target2Y); 
+asm alw NotOnObsticles(target3X, target3Y);
+
+// goals can't be on each other
+asm alw (target1X != target2X) | (target1Y != target2Y);
+asm alw (target2X != target3X) | (target2Y != target3Y);
+asm alw (target1X != target3X) | (target1Y != target3Y);
+asm alw ((target1X != 0) | (target1Y != 0)) & ((target2X != 0) | (target2Y != 0)) & ((target3X != 0) | (target3Y != 0));
+asm alw ((target1X != 4) | (target1Y != 4)) & ((target2X != 4) | (target2Y != 4)) & ((target3X != 4) | (target3Y != 4));
+
+// guarentees dealing with obstacles
+
+gar alw NotOnObsticles(robotX, robotY);
+
+//guarentees about the robot movement to targets
+
+gar ini inStart;
+gar alwEv inLocation1;
+gar alwEv inLocation2;
+gar alwEv inLocation3;
+gar alwEv inStart;
+
+// guarentees about robot possible movements
+
+predicate moveDist(DimX x, DimY y):
+  (x+1 = next(x) | x = next(x) | x-1 = next(x)) & (y+1 = next(y) | y = next(y) | y-1 = next(y));    
+
+gar alw moveDist(robotX, robotY);
+
+gar P_becomes_true_between_Q_and_R(inLocation2, inLocation1, inLocation3);
+gar P_becomes_true_between_Q_and_R(inLocation1, inLocation3, inLocation2);

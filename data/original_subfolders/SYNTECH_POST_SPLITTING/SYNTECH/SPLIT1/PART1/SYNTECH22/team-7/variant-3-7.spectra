@@ -1,0 +1,169 @@
+import "./imports/DwyerPatternsNamed.spectra"
+
+spec Variant_3
+
+////////////////////////////////////////////////
+/*
+ * VARIABLES
+ */
+////////////////////////////////////////////////
+
+//robot coordinates 
+sys DimX robotX;
+sys DimY robotY;
+
+//target A coordinates
+env DimX tar1X;
+env DimY tar1Y;
+
+//target B coordinates
+env DimX tar2X;
+env DimY tar2Y;
+
+//target C coordinates
+env DimX tar3X;
+env DimY tar3Y;
+
+////////////////////////////////////////////////
+/*
+ * DEFINES, TYPES AND PREDICATES
+ */
+////////////////////////////////////////////////
+
+type DimX = Int(0..DX);
+type DimY = Int(0..DY);
+
+define DX := 4;
+define DY := 4;
+
+predicate moveDimX(DimX pos):
+  pos+1 = next(pos) |
+  pos   = next(pos) |
+  pos-1 = next(pos);
+  
+predicate moveDimY(DimY pos):
+  pos+1 = next(pos) |
+  pos   = next(pos) |
+  pos-1 = next(pos);
+  
+predicate robotAt(DimX x, DimY y):
+	robotX=x & robotY=y;
+	
+predicate targetStays(DimX x, DimY y):
+next(x)=x & next(y)=y;
+
+predicate is_diff_point(DimX a, DimY b, DimX x, DimY y):
+(a != x) | (b != y);
+
+predicate target_not_obs(DimX tarX, DimY tarY):
+	is_diff_point(tarX, tarY, 1, 1) & 
+	is_diff_point(tarX, tarY, 2, 1) &
+	is_diff_point(tarX, tarY, 0, 3) &
+	is_diff_point(tarX, tarY, 3, 3) &
+	is_diff_point(tarX, tarY, 3, 4);
+	
+// target defines
+define atStart := robotX=0 & robotY=0;
+define atTar1 := robotX=tar1X & robotY=tar1Y;
+define atTar2 := robotX=tar2X & robotY=tar2Y;
+define atTar3 := robotX=tar3X & robotY=tar3Y;
+
+////////////////////////////////////////////////
+/*
+ * BASELINE GAR ABD ASM
+ */
+////////////////////////////////////////////////
+
+// Robot starts at (0,0)
+gar ini robotAt(0,0);
+
+// Robot not at obstacles
+gar alw !(robotAt(1, 1)); 
+gar alw !(robotAt(2, 1));
+gar alw !(robotAt(0, 3));
+gar alw !(robotAt(3, 3));
+gar alw !(robotAt(3, 4));
+
+// Robot can move one step to any nearby cell on each step
+gar alw moveDimX(robotX) & moveDimY(robotY); 
+
+// Target not at obstacles
+asm alw target_not_obs(tar1X, tar1Y);
+asm alw target_not_obs(tar2X, tar2Y);
+asm alw target_not_obs(tar3X, tar3Y);
+
+// (0,0) is not a valid target
+asm alw is_diff_point(tar1X, tar1Y, 0, 0);
+asm alw is_diff_point(tar2X, tar2Y, 0, 0);
+asm alw is_diff_point(tar3X, tar3Y, 0, 0);
+
+// (4,4) is not a valid target (avoiding 2 consecutive obstacles at (4,3) (4,4))
+asm alw is_diff_point(tar1X, tar1Y, 4, 4);
+asm alw is_diff_point(tar2X, tar2Y, 4, 4);
+asm alw is_diff_point(tar3X, tar3Y, 4, 4);
+	        
+// Targets are fixed throughout the run
+asm alw targetStays(tar1X, tar1Y) & targetStays(tar2X, tar2Y) & targetStays(tar3X, tar3Y);
+
+// 3 different targets
+asm alw is_diff_point(tar1X, tar1Y, tar2X, tar2Y);
+asm alw is_diff_point(tar2X, tar2Y, tar3X, tar3Y);
+asm alw is_diff_point(tar3X, tar3Y, tar1X, tar1Y);
+
+////////////////////////////////////////////////////////////////////
+/*
+ * VARIANT - visit all targets repeatedly, non strict order
+ * after visiting a target it cannot be re-visited for 3-5 states
+ * the robot may have rare engine problems
+ */
+ ////////////////////////////////////////////////////////////////////
+ 
+
+// variable is T iff the engine has a problem
+env boolean engine_problem;
+
+// boolean variable is T iff the robot can visit target_i
+sys boolean can_visit1;
+sys boolean can_visit2;
+sys boolean can_visit3;
+ 
+// Visit all target locations repeatedly, no target is neglected
+gar alwEv atTar1;
+gar alwEv atTar2;
+gar alwEv atTar3;
+
+// initially, all targets can be visited
+gar ini can_visit1 = true;
+gar ini can_visit2 = true;
+gar ini can_visit3 = true;
+
+// after visiting a target it cannot be re-visited for 3-5 states
+gar trig [true]*[atTar1] |=> [!can_visit1 & !atTar1]{3,5}[can_visit1];
+gar trig [true]*[atTar2] |=> [!can_visit2 & !atTar2]{3,5}[can_visit2];
+gar trig [true]*[atTar3] |=> [!can_visit3 & !atTar3]{3,5}[can_visit3];
+
+// can_visit_i boolean stays T as long as the robot didn't visit the target
+gar alw (can_visit1 & (!atTar1)) -> (next(can_visit1) = can_visit1);
+gar alw (can_visit2 & (!atTar2)) -> (next(can_visit2) = can_visit2);
+gar alw (can_visit3 & (!atTar3)) -> (next(can_visit3) = can_visit3);
+ 
+ 
+ 
+// engine problem is fixed only by returning go (0,0)
+asm alw (engine_problem & !atStart) -> (next(engine_problem) = engine_problem);
+asm alw (engine_problem & atStart) -> (next(engine_problem) != engine_problem);
+
+// If engine problem, goto (0,0) after finite number of steps 
+gar trig [true]*[engine_problem] |=> [true]*[atStart];
+
+// If engine problem and at (0,0) therefore it fixed, wait at least 15 steps until next engine problem  
+counter num_of_steps_after_fix(0..15){
+	// initially 0
+	num_of_steps_after_fix = 15;
+	inc: !engine_problem;
+	reset: atStart & engine_problem;
+	overflow: keep;
+}
+
+// If less then 15 steps after last fix, no engine problem
+asm num_of_steps_after_fix < 15 -> !engine_problem;
